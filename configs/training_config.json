@@ -1,9 +1,9 @@
 {
-  "_comment": "Safe tier from Phase 1 hardware inspection (docs/phase1_inspection_report.md). Values here are placeholders wired up properly starting Phase 12 (training loop).",
+  "_comment": "Safe tier from Phase 1 hardware inspection (docs/phase1_inspection_report.md). epochs is a ceiling independent of max_steps (whichever a run hits first stops it) -- set generously here; individual runs should bound length with max_steps.",
   "batch_size": 32,
   "val_split_ratio": 0.1,
   "learning_rate": 0.0003,
-  "epochs": 1,
+  "epochs": 10,
   "grad_accumulation_steps": 1,
   "grad_clip_norm": 1.0,
   "weight_decay": 0.01,
