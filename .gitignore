@@ -14,9 +14,11 @@ __pycache__/
 checkpoints/
 logs/
 
-# Data (raw/processed corpora kept local, not versioned)
-data/raw/
+# Processed data and derived tokenizer vocab are regenerable from data/raw/
+# via scripts/prepare_data.py — not versioned. data/raw/ itself IS committed
+# as long as it stays small and legal/original (see CLAUDE.md hard rule 5).
 data/processed/
+tokenizer/vocab.json
 
 # Frontend
 frontend/node_modules/

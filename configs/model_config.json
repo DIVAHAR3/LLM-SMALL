@@ -1,6 +1,6 @@
 {
-  "_comment": "Safe tier from Phase 1 hardware inspection (docs/phase1_inspection_report.md). vocab_size is a placeholder until Phase 3 (tokenizer) fixes the real value.",
-  "vocab_size": 100,
+  "_comment": "Safe tier from Phase 1 hardware inspection (docs/phase1_inspection_report.md). vocab_size is derived from data/raw/placeholder_corpus.txt via scripts/prepare_data.py (Phase 4) and will change if the corpus changes.",
+  "vocab_size": 51,
   "context_length": 128,
   "embedding_dim": 128,
   "num_layers": 4,
