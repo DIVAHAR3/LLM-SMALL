@@ -1,0 +1,13 @@
+{
+  "_comment": "Safe tier from Phase 1 hardware inspection (docs/phase1_inspection_report.md). Values here are placeholders wired up properly starting Phase 12 (training loop).",
+  "batch_size": 32,
+  "learning_rate": 0.0003,
+  "epochs": 1,
+  "grad_accumulation_steps": 1,
+  "grad_clip_norm": 1.0,
+  "weight_decay": 0.01,
+  "warmup_steps": 0,
+  "precision": "fp32",
+  "device": "cpu",
+  "seed": 1337
+}

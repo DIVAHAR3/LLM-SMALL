@@ -1,0 +1,10 @@
+{
+  "_comment": "Safe tier from Phase 1 hardware inspection (docs/phase1_inspection_report.md). vocab_size is a placeholder until Phase 3 (tokenizer) fixes the real value.",
+  "vocab_size": 100,
+  "context_length": 128,
+  "embedding_dim": 128,
+  "num_layers": 4,
+  "num_heads": 4,
+  "ffn_hidden_dim": 512,
+  "dropout": 0.1
+}

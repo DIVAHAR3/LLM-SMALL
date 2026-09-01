@@ -1,0 +1,29 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Secrets
+.env
+
+# Checkpoints and logs (never commit large binaries)
+checkpoints/
+logs/
+
+# Data (raw/processed corpora kept local, not versioned)
+data/raw/
+data/processed/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
