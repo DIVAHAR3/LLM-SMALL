@@ -6,9 +6,9 @@ This is a learning project, not a production system — see `CLAUDE.md` for the 
 
 ## Status
 
-Completed through **Phase 14 — Text generation**. Full decoder-only GPT (embeddings → 4 transformer blocks → final LayerNorm → LM head, 821,248 params, Safe tier) trains end-to-end on CPU, checkpoints/resumes correctly, and generates text via `python -m inference.generate --prompt "..."` (greedy, temperature, top-k, top-p, stop tokens all supported). See `docs/phase1_inspection_report.md` for the original hardware findings and model-size tiers.
+Completed through **Phase 16 — Iterative improvement (Experiment 1 logged)**. Full decoder-only GPT (embeddings → 4 transformer blocks → final LayerNorm → LM head, 821,248 params, Safe tier) trains end-to-end on CPU, checkpoints/resumes correctly, generates text via `python -m inference.generate --prompt "..."` (greedy, temperature, top-k, top-p, stop tokens all supported), and can be evaluated/compared via `training/evaluate.py` (val loss, perplexity, sample generations, throughput). See `docs/phase1_inspection_report.md` for the original hardware findings and model-size tiers.
 
-Current model/tokenizer are trained on a tiny, original 3.8KB placeholder corpus (`data/raw/placeholder_corpus.txt`) purely to prove the pipeline end-to-end — Phase 13's real training run clearly overfit this small a corpus (train loss kept falling, val loss plateaued), which is expected and exactly what larger/real data in later phases will address.
+The original tiny 3.8KB placeholder corpus (`data/raw/placeholder_corpus.txt`) clearly overfit in Phase 13 (train loss kept falling, val loss plateaued) — expected at that scale. Phase 16's first experiment (`docs/EXPERIMENTS.md`) tested dataset size as the single changed variable: a ~5.6x larger original corpus (`data/raw/experiment1_larger_corpus.txt`), same architecture, same 300-step budget, and the overfitting gap essentially disappeared (+0.20 → -0.01), with perplexity improving ~5% (11.24 → 10.68).
 
 ## Hardware summary (Phase 1)
 
@@ -38,7 +38,12 @@ pip install -r requirements.txt
 .venv\Scripts\python.exe -m inference.generate --prompt "the model" --greedy
 .venv\Scripts\python.exe -m inference.generate --prompt "the model" --top-k 5
 .venv\Scripts\python.exe -m inference.generate --prompt "the model" --top-p 0.9
+
+# Evaluate/compare checkpoints (val loss, perplexity, samples, throughput)
+# see training/evaluate.py: evaluate_checkpoint(), format_report(), compare_checkpoints()
 ```
+
+Experiment log for Phase 16 onward: `docs/EXPERIMENTS.md`.
 
 ## Project structure
 
