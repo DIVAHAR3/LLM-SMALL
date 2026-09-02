@@ -6,7 +6,9 @@ This is a learning project, not a production system — see `CLAUDE.md` for the 
 
 ## Status
 
-Completed through **Phase 17 — Checkpoint management**. Full decoder-only GPT (embeddings → 4 transformer blocks → final LayerNorm → LM head, 821,248 params, Safe tier) trains end-to-end on CPU, checkpoints/resumes correctly, generates text via `python -m inference.generate --prompt "..."` (greedy, temperature, top-k, top-p, stop tokens all supported), and can be evaluated/compared via `training/evaluate.py` (val loss, perplexity, sample generations, throughput). See `docs/phase1_inspection_report.md` for the original hardware findings and model-size tiers.
+Completed through **Phase 18 — FastAPI inference server**. Full decoder-only GPT (embeddings → 4 transformer blocks → final LayerNorm → LM head, 821,248 params, Safe tier) trains end-to-end on CPU, checkpoints/resumes correctly, generates text via `python -m inference.generate --prompt "..."` (greedy, temperature, top-k, top-p, stop tokens all supported), can be evaluated/compared via `training/evaluate.py` (val loss, perplexity, sample generations, throughput), and is now served locally over HTTP via FastAPI (`GET /health`, `POST /generate`) — see Usage below. See `docs/phase1_inspection_report.md` for the original hardware findings and model-size tiers.
+
+The server binds to `127.0.0.1` only, deliberately — public exposure requires the security review in Phase 19 first.
 
 Checkpoints are now genuinely self-describing: `training/checkpoint.load_for_inference(path)` reconstructs the correct model straight from the checkpoint file, with no separate `model_config.json` needed (Phase 17 found this wasn't actually true before — checkpoints stored the training config, not the architecture — and fixed it). `inference/generate.py`'s CLI no longer takes `--model-config` as a result.
 
@@ -43,6 +45,11 @@ pip install -r requirements.txt
 
 # Evaluate/compare checkpoints (val loss, perplexity, samples, throughput)
 # see training/evaluate.py: evaluate_checkpoint(), format_report(), compare_checkpoints()
+
+# Run the local inference API (binds to 127.0.0.1 only)
+.venv\Scripts\uvicorn.exe api.main:app --host 127.0.0.1 --port 8000
+curl http://127.0.0.1:8000/health
+curl -X POST http://127.0.0.1:8000/generate -H "Content-Type: application/json" -d "{\"prompt\": \"the model\"}"
 ```
 
 Experiment log for Phase 16 onward: `docs/EXPERIMENTS.md`.
