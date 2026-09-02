@@ -3,7 +3,6 @@
     .venv\\Scripts\\python.exe -m inference.generate --prompt "Hello"
 """
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -12,9 +11,8 @@ import torch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from model.gpt import GPTModel  # noqa: E402
 from tokenizer.char_tokenizer import CharTokenizer  # noqa: E402
-from training.checkpoint import load_checkpoint  # noqa: E402
+from training.checkpoint import load_for_inference  # noqa: E402
 
 
 def _filter_top_k(logits, top_k):
@@ -99,17 +97,16 @@ def main():
     parser.add_argument("--greedy", action="store_true")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--checkpoint", default=str(ROOT / "checkpoints" / "phase13_run.pt"))
-    parser.add_argument("--model-config", default=str(ROOT / "configs" / "model_config.json"))
     parser.add_argument("--tokenizer-path", default=str(ROOT / "tokenizer" / "vocab.json"))
     args = parser.parse_args()
 
     if args.seed is not None:
         torch.manual_seed(args.seed)
 
-    model_cfg = json.loads(Path(args.model_config).read_text(encoding="utf-8"))
     tokenizer = CharTokenizer.load(args.tokenizer_path)
-    model = GPTModel.from_config(model_cfg)
-    load_checkpoint(args.checkpoint, model)
+    # Model architecture comes entirely from the checkpoint itself (Phase 17:
+    # checkpoints are self-describing) -- no separate model config needed.
+    model, _ = load_for_inference(args.checkpoint)
 
     text = generate_text(
         model, tokenizer, args.prompt,
