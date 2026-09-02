@@ -26,6 +26,10 @@ tokenizer/vocab*.json
 frontend/node_modules/
 frontend/dist/
 
+# Raw benchmark output is machine/load-dependent and regenerable via
+# scripts/benchmark.py -- docs/BENCHMARKS.md holds the durable discussion.
+docs/benchmark_results.json
+
 # OS/editor cruft
 .DS_Store
 Thumbs.db
