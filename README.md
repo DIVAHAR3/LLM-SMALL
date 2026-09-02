@@ -6,14 +6,15 @@ This is a learning project, not a production system — see `CLAUDE.md` for the 
 
 ## Status
 
-Currently on **Phase 2 — Environment setup**. See `docs/phase1_inspection_report.md` for hardware findings and the recommended model-size tier.
+Completed through **Phase 14 — Text generation**. Full decoder-only GPT (embeddings → 4 transformer blocks → final LayerNorm → LM head, 821,248 params, Safe tier) trains end-to-end on CPU, checkpoints/resumes correctly, and generates text via `python -m inference.generate --prompt "..."` (greedy, temperature, top-k, top-p, stop tokens all supported). See `docs/phase1_inspection_report.md` for the original hardware findings and model-size tiers.
+
+Current model/tokenizer are trained on a tiny, original 3.8KB placeholder corpus (`data/raw/placeholder_corpus.txt`) purely to prove the pipeline end-to-end — Phase 13's real training run clearly overfit this small a corpus (train loss kept falling, val loss plateaued), which is expected and exactly what larger/real data in later phases will address.
 
 ## Hardware summary (Phase 1)
 
 - CPU: Intel i7-10510U, 4 cores / 8 threads
-- RAM: 7.84 GB total (tight — training design targets small models)
-- GPU: NVIDIA GeForce MX330, 2 GB VRAM (CUDA availability TBD in Phase 2)
-- PyTorch build: TBD this phase (CPU vs CUDA — see phase 2 report)
+- RAM: 7.84 GB total (tight — training design targets small models; often <1GB free in practice, watch for this before training runs)
+- GPU: NVIDIA GeForce MX330, 2 GB VRAM (not used — PyTorch is installed as a CPU-only build by deliberate choice, see Phase 2)
 
 ## Setup
 
@@ -21,6 +22,22 @@ Currently on **Phase 2 — Environment setup**. See `docs/phase1_inspection_repo
 python -m venv .venv
 .venv\Scripts\activate       # Windows
 pip install -r requirements.txt
+```
+
+## Usage so far
+
+```
+# Rebuild the tokenizer + processed train/val data from data/raw/
+.venv\Scripts\python.exe scripts\prepare_data.py
+
+# Run a training smoke test / short training run
+.venv\Scripts\python.exe -m unittest discover -s tests
+
+# Generate text from a trained checkpoint
+.venv\Scripts\python.exe -m inference.generate --prompt "the model" --temperature 0.8
+.venv\Scripts\python.exe -m inference.generate --prompt "the model" --greedy
+.venv\Scripts\python.exe -m inference.generate --prompt "the model" --top-k 5
+.venv\Scripts\python.exe -m inference.generate --prompt "the model" --top-p 0.9
 ```
 
 ## Project structure
