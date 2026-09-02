@@ -6,7 +6,9 @@ This is a learning project, not a production system — see `CLAUDE.md` for the 
 
 ## Status
 
-Completed through **Phase 16 — Iterative improvement (Experiment 1 logged)**. Full decoder-only GPT (embeddings → 4 transformer blocks → final LayerNorm → LM head, 821,248 params, Safe tier) trains end-to-end on CPU, checkpoints/resumes correctly, generates text via `python -m inference.generate --prompt "..."` (greedy, temperature, top-k, top-p, stop tokens all supported), and can be evaluated/compared via `training/evaluate.py` (val loss, perplexity, sample generations, throughput). See `docs/phase1_inspection_report.md` for the original hardware findings and model-size tiers.
+Completed through **Phase 17 — Checkpoint management**. Full decoder-only GPT (embeddings → 4 transformer blocks → final LayerNorm → LM head, 821,248 params, Safe tier) trains end-to-end on CPU, checkpoints/resumes correctly, generates text via `python -m inference.generate --prompt "..."` (greedy, temperature, top-k, top-p, stop tokens all supported), and can be evaluated/compared via `training/evaluate.py` (val loss, perplexity, sample generations, throughput). See `docs/phase1_inspection_report.md` for the original hardware findings and model-size tiers.
+
+Checkpoints are now genuinely self-describing: `training/checkpoint.load_for_inference(path)` reconstructs the correct model straight from the checkpoint file, with no separate `model_config.json` needed (Phase 17 found this wasn't actually true before — checkpoints stored the training config, not the architecture — and fixed it). `inference/generate.py`'s CLI no longer takes `--model-config` as a result.
 
 The original tiny 3.8KB placeholder corpus (`data/raw/placeholder_corpus.txt`) clearly overfit in Phase 13 (train loss kept falling, val loss plateaued) — expected at that scale. Phase 16's first experiment (`docs/EXPERIMENTS.md`) tested dataset size as the single changed variable: a ~5.6x larger original corpus (`data/raw/experiment1_larger_corpus.txt`), same architecture, same 300-step budget, and the overfitting gap essentially disappeared (+0.20 → -0.01), with perplexity improving ~5% (11.24 → 10.68).
 
