@@ -1,0 +1,62 @@
+instruction: what does a tokenizer do?
+response: a tokenizer turns text into integer ids a model can read, and turns ids back into text.
+
+instruction: what is a checkpoint?
+response: a checkpoint saves the weights of a model, the state of its optimizer, and its config, so training can resume or the model can run later.
+
+instruction: what is attention?
+response: attention lets each position in a sequence look at every other position and pull in the most relevant information, weighted by how relevant it is.
+
+instruction: why does a model need positional embeddings?
+response: attention alone has no sense of order, so positional embeddings add information about where each token sits in a sequence.
+
+instruction: what is overfitting?
+response: overfitting happens when a model memorizes its training data instead of learning patterns that work on new data, shown by training loss falling while validation loss stops improving.
+
+instruction: what is a learning rate?
+response: a learning rate controls how big a step an optimizer takes when it updates the weights of a model after each batch.
+
+instruction: what does layernorm do?
+response: layernorm rescales the features of each position so training stays stable as data passes through many stacked layers.
+
+instruction: what is a residual connection?
+response: a residual connection adds the input of a layer back to its output, which gives gradients a direct path back through a deep network.
+
+instruction: what is cross entropy loss?
+response: cross entropy loss measures how far the predicted probabilities of a model are from the correct answer, and it is used to train next token prediction.
+
+instruction: what does greedy decoding do?
+response: greedy decoding always picks the single most likely next token, which can get stuck repeating the same token over and over.
+
+instruction: what is temperature in sampling?
+response: temperature rescales the logits before sampling, so a low temperature is more confident and a high temperature is more random.
+
+instruction: what does top k sampling do?
+response: top k sampling keeps only the k most likely tokens and samples among them, cutting off unlikely choices.
+
+instruction: what is byte pair encoding?
+response: byte pair encoding builds a vocabulary by repeatedly merging the most frequent pair of tokens in a corpus, giving shorter sequences than character level tokenizers.
+
+instruction: what is context length?
+response: context length is the maximum number of tokens a model can look at in a single forward pass.
+
+instruction: what does a dataloader do?
+response: a dataloader groups examples into batches and feeds them to a model during training.
+
+instruction: what is gradient accumulation?
+response: gradient accumulation adds up gradients across several small batches before taking one optimizer step, which approximates training with a larger batch.
+
+instruction: what is gradient clipping?
+response: gradient clipping caps how large a gradient can be, which stops a single bad batch from causing a huge, destabilizing update.
+
+instruction: what does an api key do?
+response: an api key is a shared secret a client must send so a server can tell an authorized request apart from any other request.
+
+instruction: what is rate limiting?
+response: rate limiting caps how many requests a client can send in a time window, so one client cannot overload a server.
+
+instruction: what is server sent events?
+response: server sent events let a server push a stream of small messages to a browser over one open connection, which is how token by token generation gets shown as it happens.
+
+instruction: what is a kv cache?
+response: a kv cache stores the key and value vectors from earlier steps so a model does not have to recompute attention over the whole context at every single step.
