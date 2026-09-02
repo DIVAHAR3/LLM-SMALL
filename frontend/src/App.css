@@ -1,0 +1,139 @@
+.chat-app {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 16px;
+  gap: 12px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  font-size: 20px;
+  margin: 0;
+  color: var(--text-h);
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.75;
+  margin: 4px 0 0;
+}
+
+.clear-button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.clear-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.empty-state {
+  color: var(--text);
+  opacity: 0.6;
+  text-align: center;
+  margin-top: 40px;
+}
+
+.bubble {
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  line-height: 1.4;
+}
+
+.bubble p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: var(--user-bubble);
+  color: var(--user-bubble-text);
+}
+
+.bubble.assistant {
+  align-self: flex-start;
+  background: var(--assistant-bubble);
+  color: var(--assistant-bubble-text);
+}
+
+.bubble.loading p {
+  opacity: 0.6;
+}
+
+.error-banner {
+  background: var(--error-bg);
+  color: var(--error-text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 14px;
+}
+
+.chat-input input:disabled {
+  opacity: 0.6;
+}
+
+.chat-input button {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.chat-input button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
