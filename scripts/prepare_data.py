@@ -1,6 +1,9 @@
-"""Raw -> clean -> tokenize -> split pipeline. Run from the project root:
+"""Raw -> paragraphs -> clean -> filter malformed -> dedupe -> reproducible
+document-level split -> tokenize pipeline (Phase 24 hardened). Accepts one
+or more raw files; run from the project root:
 
     .venv\\Scripts\\python.exe scripts\\prepare_data.py
+    .venv\\Scripts\\python.exe scripts\\prepare_data.py --raw-file a.txt b.txt
 """
 import argparse
 import json
@@ -10,30 +13,31 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from training.data_prep import build_tokenizer, clean_text, split_ids  # noqa: E402
+from training.data_prep import prepare_corpus  # noqa: E402
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--raw-file", default=str(ROOT / "data" / "raw" / "placeholder_corpus.txt"))
+    parser.add_argument("--raw-file", nargs="+", default=[str(ROOT / "data" / "raw" / "placeholder_corpus.txt")])
     parser.add_argument("--processed-dir", default=str(ROOT / "data" / "processed"))
     parser.add_argument("--tokenizer-path", default=str(ROOT / "tokenizer" / "vocab.json"))
     parser.add_argument("--model-config", default=str(ROOT / "configs" / "model_config.json"))
     parser.add_argument("--training-config", default=str(ROOT / "configs" / "training_config.json"))
+    parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument("--min-doc-chars", type=int, default=20)
     args = parser.parse_args()
 
     training_config = json.loads(Path(args.training_config).read_text(encoding="utf-8"))
     val_split_ratio = training_config["val_split_ratio"]
 
-    raw_text = Path(args.raw_file).read_text(encoding="utf-8")
-    cleaned = clean_text(raw_text)
+    raw_texts = [Path(p).read_text(encoding="utf-8") for p in args.raw_file]
 
-    tokenizer = build_tokenizer(cleaned)
+    train_ids, val_ids, tokenizer, stats = prepare_corpus(
+        raw_texts, val_split_ratio, seed=args.seed, min_doc_chars=args.min_doc_chars,
+    )
+
     Path(args.tokenizer_path).parent.mkdir(parents=True, exist_ok=True)
     tokenizer.save(args.tokenizer_path)
-
-    ids = tokenizer.encode(cleaned)
-    train_ids, val_ids = split_ids(ids, val_split_ratio)
 
     processed_dir = Path(args.processed_dir)
     processed_dir.mkdir(parents=True, exist_ok=True)
@@ -41,13 +45,11 @@ def main():
     (processed_dir / "val_ids.json").write_text(json.dumps(val_ids), encoding="utf-8")
 
     meta = {
-        "source_file": str(args.raw_file),
-        "raw_chars": len(raw_text),
-        "cleaned_chars": len(cleaned),
-        "vocab_size": tokenizer.vocab_size,
-        "train_tokens": len(train_ids),
-        "val_tokens": len(val_ids),
+        "source_files": [str(p) for p in args.raw_file],
         "val_split_ratio": val_split_ratio,
+        "seed": args.seed,
+        "min_doc_chars": args.min_doc_chars,
+        **stats,
     }
     (processed_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
