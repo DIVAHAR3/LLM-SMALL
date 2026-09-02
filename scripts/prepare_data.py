@@ -59,7 +59,7 @@ def main():
 
     print(json.dumps(meta, indent=2))
     if old_vocab_size != tokenizer.vocab_size:
-        print(f"\nUpdated configs/model_config.json vocab_size: {old_vocab_size} -> {tokenizer.vocab_size}")
+        print(f"\nUpdated {args.model_config} vocab_size: {old_vocab_size} -> {tokenizer.vocab_size}")
 
 
 if __name__ == "__main__":

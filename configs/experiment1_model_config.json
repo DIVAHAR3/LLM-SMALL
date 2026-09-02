@@ -1,0 +1,11 @@
+{
+  "_comment": "Phase 16 Experiment 1 (more training data). Identical architecture to configs/model_config.json -- vocab_size is derived from data/raw/experiment1_larger_corpus.txt via scripts/prepare_data.py and will be updated in place when that script runs against this file. Kept separate from the canonical model_config.json so the baseline (Phase 13/15) checkpoints and configs stay untouched.",
+  "vocab_size": 59,
+  "context_length": 128,
+  "embedding_dim": 128,
+  "num_layers": 4,
+  "num_heads": 4,
+  "ffn_hidden_dim": 512,
+  "dropout": 0.1,
+  "qkv_bias": false
+}

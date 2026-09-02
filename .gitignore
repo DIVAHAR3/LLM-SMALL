@@ -15,10 +15,12 @@ checkpoints/
 logs/
 
 # Processed data and derived tokenizer vocab are regenerable from data/raw/
-# via scripts/prepare_data.py — not versioned. data/raw/ itself IS committed
-# as long as it stays small and legal/original (see CLAUDE.md hard rule 5).
-data/processed/
-tokenizer/vocab.json
+# via scripts/prepare_data.py — not versioned, including per-experiment
+# variants (e.g. data/processed_exp1/, tokenizer/vocab_exp1.json). data/raw/
+# itself IS committed as long as it stays small and legal/original (see
+# CLAUDE.md hard rule 5).
+data/processed*/
+tokenizer/vocab*.json
 
 # Frontend
 frontend/node_modules/
