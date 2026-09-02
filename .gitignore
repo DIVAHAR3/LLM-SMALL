@@ -1,5 +1,6 @@
-# Virtual environment
+# Virtual environments
 .venv/
+.venv_gpu_test/
 
 # Python
 __pycache__/
