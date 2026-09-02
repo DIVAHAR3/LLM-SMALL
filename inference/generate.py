@@ -55,11 +55,18 @@ def sample_next_token(logits, temperature=1.0, top_k=None, top_p=None, greedy=Fa
     return int(torch.multinomial(probs, num_samples=1).item())
 
 
-def generate_ids(model, prompt_ids, max_new_tokens, temperature=1.0, top_k=None, top_p=None, greedy=False, stop_token_ids=None):
-    """Core autoregressive loop, operating on token ids directly (no
-    tokenizer needed here -- keeps this the most directly testable unit).
-    Feeds only the most recent context_length tokens to the model at each
-    step, since the model has no way to attend further back than that."""
+def stream_ids(model, prompt_ids, max_new_tokens, temperature=1.0, top_k=None, top_p=None, greedy=False, stop_token_ids=None):
+    """Generator version of the autoregressive loop: yields each newly
+    generated token id one at a time, the instant it's sampled, instead of
+    building and returning the whole sequence at once. generate_ids below
+    is just this generator fully consumed -- one sampling loop, not two.
+
+    A `with` block spanning `yield` works correctly in a generator: eval
+    mode is restored via `finally` whether the generator runs to
+    completion, is only partially consumed, or is closed early (e.g. a
+    streaming HTTP client disconnects) -- Python delivers GeneratorExit
+    at the suspended yield point, which still unwinds through `finally`.
+    """
     context_length = model.config["context_length"]
     stop_token_ids = set(stop_token_ids) if stop_token_ids else set()
 
@@ -74,11 +81,20 @@ def generate_ids(model, prompt_ids, max_new_tokens, temperature=1.0, top_k=None,
                 logits = model(x)[0, -1]
                 next_id = sample_next_token(logits, temperature, top_k, top_p, greedy)
                 ids.append(next_id)
+                yield next_id
                 if next_id in stop_token_ids:
                     break
     finally:
         model.train(was_training)
-    return ids
+
+
+def generate_ids(model, prompt_ids, max_new_tokens, temperature=1.0, top_k=None, top_p=None, greedy=False, stop_token_ids=None):
+    """Core autoregressive loop, operating on token ids directly (no
+    tokenizer needed here -- keeps this the most directly testable unit).
+    Feeds only the most recent context_length tokens to the model at each
+    step, since the model has no way to attend further back than that."""
+    new_ids = list(stream_ids(model, prompt_ids, max_new_tokens, temperature, top_k, top_p, greedy, stop_token_ids))
+    return list(prompt_ids) + new_ids
 
 
 def generate_text(model, tokenizer, prompt, max_new_tokens=200, temperature=1.0, top_k=None, top_p=None, greedy=False, stop_token_ids=None):

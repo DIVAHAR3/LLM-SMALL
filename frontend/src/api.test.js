@@ -1,5 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { generateText } from './api'
+import { generateText, generateTextStream } from './api'
+
+function makeMockReader(rawChunks) {
+  let index = 0
+  return {
+    read: async () => {
+      if (index >= rawChunks.length) return { done: true, value: undefined }
+      const value = new TextEncoder().encode(rawChunks[index])
+      index += 1
+      return { done: false, value }
+    },
+  }
+}
 
 describe('generateText', () => {
   beforeEach(() => {
@@ -50,5 +62,62 @@ describe('generateText', () => {
     })
 
     await expect(generateText('hi')).rejects.toThrow('Internal Server Error')
+  })
+})
+
+describe('generateTextStream', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('POSTs to <API_URL>/generate/stream and calls onChunk for each SSE chunk in order', async () => {
+    const reader = makeMockReader([
+      'data: {"chunk": "a"}\n\n',
+      'data: {"chunk": "b"}\n\n',
+      'data: {"done": true}\n\n',
+    ])
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => reader } })
+
+    const received = []
+    await generateTextStream('hi', { max_new_tokens: 10 }, (chunk) => received.push(chunk))
+
+    expect(received).toEqual(['a', 'b'])
+    const [url, options] = global.fetch.mock.calls[0]
+    expect(url).toBe(`${import.meta.env.VITE_API_URL}/generate/stream`)
+    expect(options.headers['X-API-Key']).toBe(import.meta.env.VITE_API_KEY)
+    expect(JSON.parse(options.body)).toEqual({ prompt: 'hi', max_new_tokens: 10 })
+  })
+
+  it('reassembles an SSE event that arrives split across two reads', async () => {
+    // the blank-line delimiter falls in the middle of what the network
+    // layer actually delivers as two separate chunks -- must not lose data
+    const reader = makeMockReader(['data: {"chunk": "hel', 'lo"}\n\n', 'data: {"done": true}\n\n'])
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => reader } })
+
+    const received = []
+    await generateTextStream('hi', {}, (chunk) => received.push(chunk))
+
+    expect(received).toEqual(['hello'])
+  })
+
+  it('throws when the stream emits an error event, without calling onChunk for it', async () => {
+    const reader = makeMockReader(['data: {"chunk": "a"}\n\n', 'data: {"error": "Rate limit exceeded."}\n\n'])
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => reader } })
+
+    const received = []
+    await expect(generateTextStream('hi', {}, (chunk) => received.push(chunk))).rejects.toThrow(
+      'Rate limit exceeded.',
+    )
+    expect(received).toEqual(['a'])
+  })
+
+  it('throws with the response detail when the initial request itself fails', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      statusText: 'Unauthorized',
+      json: async () => ({ detail: 'Invalid or missing API key.' }),
+    })
+
+    await expect(generateTextStream('hi', {}, () => {})).rejects.toThrow('Invalid or missing API key.')
   })
 })

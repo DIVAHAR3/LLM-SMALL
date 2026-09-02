@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -184,6 +185,90 @@ class TestAPI(unittest.TestCase):
         with TestClient(self.api_main.app) as client:
             response = client.get("/health", headers={"Origin": "http://evil.example.com"})
         self.assertNotIn("access-control-allow-origin", {k.lower() for k in response.headers.keys()})
+
+    # --- Phase 21: streaming ---
+
+    def test_stream_yields_sse_events_ending_in_done(self):
+        with TestClient(self.api_main.app) as client:
+            response = client.post(
+                "/generate/stream", json={"prompt": "the quick", "max_new_tokens": 5, "greedy": True},
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, 200)
+        events = parse_sse_events(response.text)
+        self.assertGreater(len(events), 0)
+        self.assertEqual(events[-1], {"done": True})
+        for event in events[:-1]:
+            self.assertIn("chunk", event)
+
+    def test_stream_reconstructs_the_same_text_as_non_streaming_generation(self):
+        payload = {"prompt": "the quick", "max_new_tokens": 8, "greedy": True}
+        with TestClient(self.api_main.app) as client:
+            non_streaming = client.post("/generate", json=payload, headers=self.auth_headers).json()["text"]
+            streamed = client.post("/generate/stream", json=payload, headers=self.auth_headers)
+
+        events = parse_sse_events(streamed.text)
+        streamed_text = payload["prompt"] + "".join(e["chunk"] for e in events if "chunk" in e)
+        self.assertEqual(streamed_text, non_streaming)
+
+    def test_stream_rejects_missing_api_key(self):
+        with TestClient(self.api_main.app) as client:
+            response = client.post("/generate/stream", json={"prompt": "the"})
+        self.assertEqual(response.status_code, 401)
+
+    def test_stream_respects_rate_limit(self):
+        with patch.dict(os.environ, {"RATE_LIMIT_REQUESTS": "1", "RATE_LIMIT_WINDOW_SECONDS": "60"}):
+            with TestClient(self.api_main.app) as client:
+                first = client.post(
+                    "/generate/stream", json={"prompt": "the", "max_new_tokens": 1, "greedy": True},
+                    headers=self.auth_headers,
+                )
+                second = client.post(
+                    "/generate/stream", json={"prompt": "the", "max_new_tokens": 1, "greedy": True},
+                    headers=self.auth_headers,
+                )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)
+
+    def test_stream_rejects_invalid_request_before_streaming_starts(self):
+        with TestClient(self.api_main.app) as client:
+            response = client.post("/generate/stream", json={"prompt": ""}, headers=self.auth_headers)
+        self.assertEqual(response.status_code, 422)
+
+    def test_stream_emits_error_event_without_leaking_internals_on_failure(self):
+        # A real stream_ids(...) call never raises synchronously -- it's a
+        # generator function, so its body (and any error inside it) only
+        # runs once iteration begins. Simulate that realistically: a
+        # generator that yields one token successfully, then fails
+        # mid-stream (the actual failure shape this needs to handle).
+        def broken_stream(*args, **kwargs):
+            yield 1
+            raise RuntimeError("some internal detail")
+
+        with TestClient(self.api_main.app) as client:
+            with patch("api.sse.stream_ids", side_effect=broken_stream):
+                response = client.post("/generate/stream", json={"prompt": "the"}, headers=self.auth_headers)
+        events = parse_sse_events(response.text)
+        self.assertIn("chunk", events[0])  # the successful token still made it out
+        self.assertIn("error", events[-1])
+        self.assertNotIn("some internal detail", response.text)
+
+
+def parse_sse_events(text):
+    events = []
+    for block in text.split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        assert block.startswith("data: "), block
+        events.append(json.loads(block[len("data: "):]))
+    return events
+
+
+class TestFormatEvent(unittest.TestCase):
+    def test_wraps_payload_as_json_with_sse_data_prefix_and_blank_line(self):
+        from api.sse import format_event
+        self.assertEqual(format_event({"chunk": "a"}), 'data: {"chunk": "a"}\n\n')
 
 
 class TestParseAllowedOrigins(unittest.TestCase):

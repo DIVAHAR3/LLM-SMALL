@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { generateText } from './api'
+import { generateTextStream } from './api'
 import './App.css'
 
 function MessageBubble({ role, text }) {
@@ -17,21 +17,35 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
+  function appendToLastMessage(chunk) {
+    setMessages((prev) => {
+      const updated = [...prev]
+      const last = updated[updated.length - 1]
+      updated[updated.length - 1] = { ...last, text: last.text + chunk }
+      return updated
+    })
+  }
+
   async function handleSend(event) {
     event.preventDefault()
     const prompt = input.trim()
     if (!prompt || loading) return
 
-    setMessages((prev) => [...prev, { role: 'user', text: prompt }])
+    setMessages((prev) => [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: '' }])
     setInput('')
     setLoading(true)
     setError(null)
 
     try {
-      const text = await generateText(prompt, { max_new_tokens: 100, temperature: 0.8 })
-      setMessages((prev) => [...prev, { role: 'assistant', text }])
+      await generateTextStream(prompt, { max_new_tokens: 150, temperature: 0.8 }, appendToLastMessage)
     } catch (err) {
       setError(err.message)
+      // Drop the placeholder bubble only if nothing ever streamed into it;
+      // if some text arrived before the failure, keep it -- it's real output.
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        return last && last.role === 'assistant' && last.text === '' ? prev.slice(0, -1) : prev
+      })
     } finally {
       setLoading(false)
     }
@@ -41,6 +55,9 @@ function App() {
     setMessages([])
     setError(null)
   }
+
+  const lastMessage = messages[messages.length - 1]
+  const isAwaitingFirstChunk = loading && lastMessage?.role === 'assistant' && lastMessage.text === ''
 
   return (
     <div className="chat-app">
@@ -55,18 +72,16 @@ function App() {
       </header>
 
       <div className="message-list">
-        {messages.length === 0 && !loading && (
+        {messages.length === 0 && (
           <p className="empty-state">Send a prompt to see what the model generates.</p>
         )}
         {messages.map((message, index) => (
-          <MessageBubble key={index} role={message.role} text={message.text} />
+          <MessageBubble
+            key={index}
+            role={message.role}
+            text={index === messages.length - 1 && isAwaitingFirstChunk ? '…' : message.text}
+          />
         ))}
-        {loading && (
-          <div className="bubble assistant loading">
-            <span className="bubble-label">Model</span>
-            <p>Generating…</p>
-          </div>
-        )}
       </div>
 
       {error && <div className="error-banner">Error: {error}</div>}

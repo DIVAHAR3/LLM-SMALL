@@ -12,8 +12,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")  # must happen before any os.environ reads below
@@ -26,6 +27,7 @@ from api.security import (  # noqa: E402
     parse_allowed_origins,
     require_api_key,
 )
+from api.sse import sse_token_stream  # noqa: E402
 from inference.generate import generate_text  # noqa: E402
 from tokenizer.char_tokenizer import CharTokenizer  # noqa: E402
 from training.checkpoint import load_for_inference  # noqa: E402
@@ -125,3 +127,19 @@ def generate(request: GenerateRequest):
         logger.exception("generation failed")
         raise HTTPException(status_code=500, detail="Generation failed. See server logs for details.")
     return GenerateResponse(text=text)
+
+
+@app.post("/generate/stream", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
+def generate_stream(generate_request: GenerateRequest, http_request: Request):
+    """Same generation as POST /generate, but streamed incrementally over
+    Server-Sent Events instead of returned as one JSON body at the end.
+    Only added once the non-streaming path (above) was proven stable."""
+    logger.info(
+        f"generate/stream: prompt_len={len(generate_request.prompt)} max_new_tokens={generate_request.max_new_tokens} "
+        f"temperature={generate_request.temperature} top_k={generate_request.top_k} "
+        f"top_p={generate_request.top_p} greedy={generate_request.greedy}"
+    )
+    return StreamingResponse(
+        sse_token_stream(app.state.model, app.state.tokenizer, generate_request, http_request),
+        media_type="text/event-stream",
+    )

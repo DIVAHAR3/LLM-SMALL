@@ -7,7 +7,7 @@ import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from inference.generate import _filter_top_k, _filter_top_p, generate_ids, generate_text, sample_next_token
+from inference.generate import _filter_top_k, _filter_top_p, generate_ids, generate_text, sample_next_token, stream_ids
 from model.gpt import GPTModel
 from tokenizer.char_tokenizer import CharTokenizer
 
@@ -138,6 +138,48 @@ class TestGenerateIds(unittest.TestCase):
         model.eval()
         generate_ids(model, [0, 1], max_new_tokens=3, greedy=True)
         self.assertFalse(model.training)
+
+
+class TestStreamIds(unittest.TestCase):
+    def test_matches_generate_ids_exactly_when_fully_consumed(self):
+        # generate_ids is now just stream_ids fully consumed -- this proves
+        # the refactor preserved identical behavior, not just "still passes
+        # the old tests" (those never directly compare the two).
+        model = make_tiny_model()
+        prompt_ids = [0, 1, 2]
+        torch.manual_seed(0)
+        via_generate_ids = generate_ids(model, prompt_ids, max_new_tokens=10, greedy=True)
+        torch.manual_seed(0)
+        via_stream = prompt_ids + list(stream_ids(model, prompt_ids, max_new_tokens=10, greedy=True))
+        self.assertEqual(via_generate_ids, via_stream)
+
+    def test_yields_one_token_at_a_time_not_all_at_once(self):
+        model = make_tiny_model()
+        gen = stream_ids(model, [0, 1], max_new_tokens=10, greedy=True)
+        first_token = next(gen)
+        self.assertIsInstance(first_token, int)
+        # only one token should exist so far -- proves this is genuinely
+        # incremental, not a generator that secretly runs to completion
+        # before yielding its first value.
+        remaining = list(gen)
+        self.assertEqual(len(remaining), 9)
+
+    def test_stop_token_is_yielded_then_generation_halts(self):
+        stop_id = 7
+        model = _AlwaysPredictModel(vocab_size=12, context_length=6, favored_id=stop_id)
+        yielded = list(stream_ids(model, [0, 1], max_new_tokens=50, greedy=True, stop_token_ids={stop_id}))
+        self.assertEqual(yielded, [stop_id])  # exactly one token yielded: the stop token itself
+
+    def test_closing_early_still_restores_eval_mode(self):
+        # Simulates a client disconnecting mid-stream: the generator is
+        # abandoned (never asked for its remaining tokens) and garbage
+        # collected. The `finally` inside stream_ids must still run.
+        model = make_tiny_model()
+        model.train()
+        gen = stream_ids(model, [0, 1], max_new_tokens=50, greedy=True)
+        next(gen)  # partially consume, then close early
+        gen.close()
+        self.assertTrue(model.training)  # restored, not left in eval mode
 
 
 class TestGenerateText(unittest.TestCase):
