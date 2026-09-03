@@ -108,6 +108,30 @@ header h1 {
   font-family: ui-monospace, 'SF Mono', Consolas, monospace;
 }
 
+.ocr-text-block {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.ocr-text-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.75;
+  color: var(--accent);
+}
+
+.ocr-text-value {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 15px;
+  color: var(--text-h);
+}
+
 .bubble.loading p {
   opacity: 0.6;
 }

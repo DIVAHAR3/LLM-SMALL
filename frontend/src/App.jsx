@@ -4,10 +4,16 @@ import './App.css'
 
 const BUBBLE_LABELS = { user: 'You', assistant: 'Model', analysis: 'Image analysis' }
 
-function MessageBubble({ role, text }) {
+function MessageBubble({ role, text, ocrText }) {
   return (
     <div className={`bubble ${role}`}>
       <span className="bubble-label">{BUBBLE_LABELS[role] ?? role}</span>
+      {ocrText && (
+        <div className="ocr-text-block">
+          <span className="ocr-text-label">Extracted text</span>
+          <p className="ocr-text-value">{ocrText}</p>
+        </div>
+      )}
       {role === 'analysis' ? <pre>{text}</pre> : <p>{text}</p>}
     </div>
   )
@@ -68,7 +74,10 @@ function App() {
 
     try {
       const result = await analyzeImage(file)
-      setMessages((prev) => [...prev, { role: 'analysis', text: JSON.stringify(result, null, 2) }])
+      setMessages((prev) => [
+        ...prev,
+        { role: 'analysis', text: JSON.stringify(result, null, 2), ocrText: result.ocr_text },
+      ])
     } catch (err) {
       setError(err.message)
     } finally {
@@ -105,6 +114,7 @@ function App() {
             key={index}
             role={message.role}
             text={index === messages.length - 1 && isAwaitingFirstChunk ? '…' : message.text}
+            ocrText={message.ocrText}
           />
         ))}
       </div>

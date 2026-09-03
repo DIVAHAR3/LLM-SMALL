@@ -117,6 +117,32 @@ describe('App', () => {
     expect(api.analyzeImage).toHaveBeenCalledWith(file)
   })
 
+  it('shows extracted OCR text in its own readable callout, not just inside the JSON', async () => {
+    const analysis = { format: 'PNG', width: 10, height: 10, dominant_colors: [], ocr_text: 'Hello World' }
+    api.analyzeImage.mockResolvedValue(analysis)
+    render(<App />)
+
+    const file = new File(['fake bytes'], 'photo.png', { type: 'image/png' })
+    const clipboardData = { items: [{ type: 'image/png', getAsFile: () => file }] }
+    fireEvent.paste(screen.getByPlaceholderText(/type a prompt/i), { clipboardData })
+
+    await waitFor(() => expect(screen.getByText('Hello World')).toBeInTheDocument())
+    expect(screen.getByText(/extracted text/i)).toBeInTheDocument()
+  })
+
+  it('does not show the extracted-text callout when ocr_text is null', async () => {
+    const analysis = { format: 'PNG', width: 10, height: 10, dominant_colors: [], ocr_text: null }
+    api.analyzeImage.mockResolvedValue(analysis)
+    render(<App />)
+
+    const file = new File(['fake bytes'], 'photo.png', { type: 'image/png' })
+    const clipboardData = { items: [{ type: 'image/png', getAsFile: () => file }] }
+    fireEvent.paste(screen.getByPlaceholderText(/type a prompt/i), { clipboardData })
+
+    await waitFor(() => expect(screen.getByText(/"format": "PNG"/)).toBeInTheDocument())
+    expect(screen.queryByText(/extracted text/i)).not.toBeInTheDocument()
+  })
+
   it('shows an error banner when image analysis fails', async () => {
     api.analyzeImage.mockRejectedValue(new Error('could not decode image: broken'))
     render(<App />)
