@@ -13,6 +13,8 @@ The server binds to `127.0.0.1` only. `POST /generate` requires an `X-API-Key` h
 
 **Image analysis (classical, no ML)** — added outside the numbered phase sequence, by request. Paste an image into the chat UI and get back real, measured properties (dimensions, format, brightness/contrast, dominant colors via median-cut color quantization, EXIF if present) as JSON — deliberately no model, no training, no external API call. See `docs/IMAGE_ANALYSIS.md` and `docs/ROADMAP.md`'s "Features added outside the numbered sequence".
 
+**OCR (from-scratch text extraction)** — same JSON response's `ocr_text` field, built the same way the GPT was: a small CNN character classifier (213,630 params) trained on self-rendered synthetic data, combined with classical connected-component segmentation (Otsu thresholding, flood fill, geometric word/line-break detection) — no pretrained model, no API. Real limitations documented rather than glossed over (case ambiguity between letter pairs like C/c, i/j dot-splitting) — see `docs/OCR.md`.
+
 Checkpoints are now genuinely self-describing: `training/checkpoint.load_for_inference(path)` reconstructs the correct model straight from the checkpoint file, with no separate `model_config.json` needed (Phase 17 found this wasn't actually true before — checkpoints stored the training config, not the architecture — and fixed it). `inference/generate.py`'s CLI no longer takes `--model-config` as a result.
 
 The original tiny 3.8KB placeholder corpus (`data/raw/placeholder_corpus.txt`) clearly overfit in Phase 13 (train loss kept falling, val loss plateaued) — expected at that scale. Phase 16's first experiment (`docs/EXPERIMENTS.md`) tested dataset size as the single changed variable: a ~5.6x larger original corpus (`data/raw/experiment1_larger_corpus.txt`), same architecture, same 300-step budget, and the overfitting gap essentially disappeared (+0.20 → -0.01), with perplexity improving ~5% (11.24 → 10.68).
@@ -56,8 +58,12 @@ curl http://127.0.0.1:8000/health
 curl -X POST http://127.0.0.1:8000/generate -H "Content-Type: application/json" -H "X-API-Key: <your key>" -d "{\"prompt\": \"the model\"}"
 
 # Classical image analysis (see docs/IMAGE_ANALYSIS.md) -- or paste an image
-# into the chat UI's input directly
+# into the chat UI's input directly. Response includes ocr_text if the OCR
+# checkpoint below has been trained.
 curl -X POST http://127.0.0.1:8000/analyze/image -H "X-API-Key: <your key>" -F "file=@photo.png;type=image/png"
+
+# Train the from-scratch OCR character classifier (see docs/OCR.md)
+.venv\Scripts\python.exe scripts\train_ocr.py
 ```
 
 Experiment log for Phase 16 onward: `docs/EXPERIMENTS.md`.
@@ -77,6 +83,8 @@ llm-project/
 ├── training/           # dataset.py, train.py, evaluate.py, checkpoint.py
 ├── inference/          # generate.py
 ├── analysis/           # image_analysis.py (classical, no ML -- see docs/IMAGE_ANALYSIS.md)
+├── ocr/                # from-scratch OCR: synthetic_data.py, model.py, dataset.py, train.py,
+│                       # segment.py, normalize.py, extract.py, checkpoint.py -- see docs/OCR.md
 ├── api/                # main.py, schemas.py
 ├── tests/
 ├── scripts/            # inspect_system.py, prepare_data.py, benchmark.py

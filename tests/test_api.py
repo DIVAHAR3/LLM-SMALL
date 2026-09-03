@@ -14,6 +14,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from model.gpt import GPTModel
+from ocr.model import CharacterCNN
 from tokenizer.char_tokenizer import CharTokenizer
 from training.checkpoint import save_checkpoint
 
@@ -36,6 +37,15 @@ def make_tiny_checkpoint_and_tokenizer(tmpdir):
     return checkpoint_path, tokenizer_path, model.num_parameters()
 
 
+def make_tiny_ocr_checkpoint(tmpdir):
+    torch.manual_seed(0)
+    model = CharacterCNN(image_size=28, num_classes=62, conv1_channels=4, conv2_channels=8, hidden_dim=16, dropout=0.0)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    checkpoint_path = str(Path(tmpdir) / "ocr_ckpt.pt")
+    save_checkpoint(checkpoint_path, model, optimizer, epoch=0, step=1, config={}, metrics={})
+    return checkpoint_path
+
+
 class TestAPI(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
@@ -46,6 +56,10 @@ class TestAPI(unittest.TestCase):
                 "CHECKPOINT_PATH": self.checkpoint_path,
                 "TOKENIZER_PATH": self.tokenizer_path,
                 "API_KEY": TEST_API_KEY,
+                # explicit, deliberately-nonexistent path: keeps tests hermetic
+                # and independent of whatever OCR checkpoint may or may not
+                # exist locally -- OCR-specific tests below override this.
+                "OCR_CHECKPOINT_PATH": str(Path(self.tmpdir.name) / "no_such_ocr_checkpoint.pt"),
             },
         )
         self.env_patch.start()
@@ -256,6 +270,51 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(body["format"], "PNG")
         self.assertEqual(len(body["dominant_colors"]), 1)
         self.assertEqual(body["dominant_colors"][0]["hex"], "#0a141e")
+
+    def test_analyze_image_omits_ocr_text_when_ocr_checkpoint_is_unavailable(self):
+        # setUp points OCR_CHECKPOINT_PATH at a nonexistent file by default
+        image = Image.new("RGB", (10, 10), color=(1, 2, 3))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        with TestClient(self.api_main.app) as client:
+            response = client.post(
+                "/analyze/image", files={"file": ("t.png", buffer.getvalue(), "image/png")}, headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["ocr_text"])
+
+    def test_analyze_image_includes_ocr_text_when_a_checkpoint_is_available(self):
+        ocr_checkpoint_path = make_tiny_ocr_checkpoint(self.tmpdir.name)
+        image = Image.new("RGB", (40, 20), color=(200, 200, 200))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        with patch.dict(os.environ, {"OCR_CHECKPOINT_PATH": ocr_checkpoint_path}):
+            with TestClient(self.api_main.app) as client:
+                response = client.post(
+                    "/analyze/image", files={"file": ("t.png", buffer.getvalue(), "image/png")}, headers=self.auth_headers,
+                )
+        self.assertEqual(response.status_code, 200)
+        # a blank 40x20 image has no ink -- correctly extracts to empty text,
+        # not None, proving the OCR pipeline actually ran rather than being skipped
+        self.assertEqual(response.json()["ocr_text"], "")
+
+    def test_analyze_image_survives_an_ocr_extraction_failure(self):
+        ocr_checkpoint_path = make_tiny_ocr_checkpoint(self.tmpdir.name)
+        image = Image.new("RGB", (10, 10), color=(5, 5, 5))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        with patch.dict(os.environ, {"OCR_CHECKPOINT_PATH": ocr_checkpoint_path}):
+            with TestClient(self.api_main.app) as client:
+                with patch("api.main.extract_text", side_effect=RuntimeError("boom")):
+                    response = client.post(
+                        "/analyze/image", files={"file": ("t.png", buffer.getvalue(), "image/png")}, headers=self.auth_headers,
+                    )
+        # the classical analysis (already computed before OCR runs) must
+        # still come through even though OCR itself blew up
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIsNone(body["ocr_text"])
+        self.assertEqual(body["width"], 10)
 
     def test_analyze_image_rejects_non_image_bytes(self):
         with TestClient(self.api_main.app) as client:

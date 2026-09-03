@@ -43,3 +43,8 @@ class ImageAnalysisResponse(BaseModel):
     brightness: BrightnessStats
     dominant_colors: list[DominantColor]
     exif: dict[str, Union[str, int, float]]
+    ocr_text: Optional[str] = Field(
+        default=None,
+        description="Text extracted by the from-scratch OCR pipeline (see docs/OCR.md). "
+        "null if the OCR checkpoint isn't available on this server.",
+    )

@@ -6,6 +6,7 @@ Binds to 127.0.0.1 only, deliberately -- public exposure requires the
 security review in Phase 19 first (see CLAUDE.md hard rule 7, and
 docs/SECURITY.md for the full written plan).
 """
+import io
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")  # must happen before any os.environ reads below
@@ -30,6 +32,8 @@ from api.security import (  # noqa: E402
 )
 from api.sse import sse_token_stream  # noqa: E402
 from inference.generate import generate_text  # noqa: E402
+from ocr.checkpoint import load_ocr_model_for_inference  # noqa: E402
+from ocr.extract import extract_text  # noqa: E402
 from tokenizer.char_tokenizer import CharTokenizer  # noqa: E402
 from training.checkpoint import load_for_inference  # noqa: E402
 
@@ -48,6 +52,7 @@ logger = logging.getLogger("api")
 
 DEFAULT_CHECKPOINT = str(ROOT / "checkpoints" / "phase13_run.pt")
 DEFAULT_TOKENIZER = str(ROOT / "tokenizer" / "vocab.json")
+DEFAULT_OCR_CHECKPOINT = str(ROOT / "checkpoints" / "ocr_character_cnn.pt")
 
 # CORS origins are read once at module/middleware-registration time (Starlette
 # builds its middleware stack when the app object is constructed, not per
@@ -82,6 +87,19 @@ async def lifespan(app: FastAPI):
     logger.info(f"Model loaded: {app.state.param_count:,} params from {checkpoint_path}")
     if not app.state.api_key:
         logger.warning("API_KEY is not set -- /generate will reject all requests until it is configured.")
+
+    # OCR is optional: scripts/train_ocr.py's checkpoint isn't committed
+    # (gitignored, like every checkpoint), so a fresh clone won't have it
+    # until someone runs that script. /analyze/image's classical analysis
+    # (dimensions, colors, brightness, EXIF) works regardless -- only the
+    # ocr_text field depends on this.
+    ocr_checkpoint_path = os.environ.get("OCR_CHECKPOINT_PATH", DEFAULT_OCR_CHECKPOINT)
+    try:
+        app.state.ocr_model, _ = load_ocr_model_for_inference(ocr_checkpoint_path)
+        logger.info(f"OCR model loaded from {ocr_checkpoint_path}")
+    except (FileNotFoundError, ValueError) as exc:
+        app.state.ocr_model = None
+        logger.warning(f"OCR model unavailable ({exc}) -- /analyze/image will omit ocr_text.")
 
     yield
 
@@ -167,4 +185,19 @@ async def analyze_image_endpoint(file: UploadFile = File(...)):
         result = analyze_image(image_bytes)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    if app.state.ocr_model is not None:
+        try:
+            pil_image = Image.open(io.BytesIO(image_bytes))
+            result["ocr_text"] = extract_text(pil_image, app.state.ocr_model)
+        except Exception:
+            # OCR is a best-effort extra on top of the already-successful
+            # classical analysis above -- a segmentation/classification
+            # failure on some unusual image shouldn't take down the whole
+            # response when the real analysis already succeeded.
+            logger.exception("OCR text extraction failed; returning analysis without ocr_text")
+            result["ocr_text"] = None
+    else:
+        result["ocr_text"] = None
+
     return ImageAnalysisResponse(**result)

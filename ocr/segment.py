@@ -12,7 +12,16 @@ ocr/synthetic_data.py's CHARACTERS, but wrong for glyphs that are
 naturally drawn as more than one disconnected stroke -- 'i' and 'j'
 (dot + stem) will segment into two separate regions instead of one.
 Not handled in this pass; a real limitation to fix later, not silently
-worked around."""
+worked around.
+
+Verified directly (not just assumed) that this can be worse than "one
+extra character mid-word": a dot sitting well above a line's main
+letter body sometimes fails the vertical-overlap check in
+group_into_lines entirely, so ocr/extract.py's text reconstruction can
+emit it as its own spurious one-character LINE (a stray newline plus
+one wrong character) rather than an extra character within the correct
+line. Same root cause (i/j's dot+stem are naturally disconnected), a
+real consequence worth naming rather than glossing over."""
 from PIL import Image, ImageOps
 
 from ocr.normalize import IMAGE_SIZE, normalize_bbox_to_canvas
@@ -133,9 +142,13 @@ def _filter_noise(boxes, image_width, image_height):
     return kept
 
 
-def group_into_reading_order(boxes):
-    """Groups boxes into lines by vertical overlap, then returns them
-    ordered top-to-bottom by line, left-to-right within each line."""
+def group_into_lines(boxes):
+    """Groups boxes into lines by vertical overlap. Returns a list of
+    lines, each a list of boxes sorted left-to-right; lines themselves
+    are ordered top-to-bottom. This is the structure text reconstruction
+    (ocr/extract.py) needs -- a flattened order alone can't tell a word
+    break within a line from a line break, since both just look like
+    "the next box" once flattened."""
     lines = []  # each entry: list of boxes, roughly sharing a y-range
     for box in sorted(boxes, key=lambda b: b[1]):  # by ymin
         _, ymin, _, ymax = box
@@ -154,9 +167,15 @@ def group_into_reading_order(boxes):
             lines.append([box])
 
     lines.sort(key=lambda line: min(b[1] for b in line))
+    return [sorted(line, key=lambda b: b[0]) for line in lines]
+
+
+def group_into_reading_order(boxes):
+    """Flattened version of group_into_lines: top-to-bottom by line,
+    left-to-right within each line, as one single list."""
     ordered = []
-    for line in lines:
-        ordered.extend(sorted(line, key=lambda b: b[0]))
+    for line in group_into_lines(boxes):
+        ordered.extend(line)
     return ordered
 
 
@@ -171,12 +190,13 @@ def _crop_and_prepare(normalized_image, box, target_size=IMAGE_SIZE):
     return normalize_bbox_to_canvas(normalized_image, box, target_size=target_size)
 
 
-def segment_characters(image):
-    """End-to-end: a full image -> an ordered list of (crop, bbox)
-    pairs, one per detected character region, in reading order. Each
-    crop is IMAGE_SIZE x IMAGE_SIZE, grayscale, dark-ink-on-light --
-    ready for CharacterCNN. bbox is in the (possibly downsized)
-    working image's own coordinates."""
+def segment_characters_by_line(image):
+    """End-to-end: a full image -> a list of lines, each a list of
+    (crop, bbox) pairs for one detected character region, left-to-right
+    within its line, lines ordered top-to-bottom. Each crop is
+    IMAGE_SIZE x IMAGE_SIZE, grayscale, dark-ink-on-light -- ready for
+    CharacterCNN. bbox is in the (possibly downsized) working image's
+    own coordinates."""
     grayscale = image.convert("L")
     if max(grayscale.size) > MAX_DIMENSION:
         scale = MAX_DIMENSION / max(grayscale.size)
@@ -186,6 +206,16 @@ def segment_characters(image):
     mask, normalized = _ink_mask_and_normalized_image(grayscale)
     boxes = find_connected_components(mask, grayscale.width, grayscale.height)
     boxes = _filter_noise(boxes, grayscale.width, grayscale.height)
-    boxes = group_into_reading_order(boxes)
+    lines = group_into_lines(boxes)
 
-    return [(_crop_and_prepare(normalized, box), box) for box in boxes]
+    return [[(_crop_and_prepare(normalized, box), box) for box in line] for line in lines]
+
+
+def segment_characters(image):
+    """Flattened version of segment_characters_by_line: an ordered list
+    of (crop, bbox) pairs across the whole image, top-to-bottom by
+    line, left-to-right within each line."""
+    flat = []
+    for line in segment_characters_by_line(image):
+        flat.extend(line)
+    return flat

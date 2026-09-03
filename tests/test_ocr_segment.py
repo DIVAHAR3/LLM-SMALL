@@ -9,9 +9,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ocr.segment import (
     find_connected_components,
+    group_into_lines,
     group_into_reading_order,
     otsu_threshold,
     segment_characters,
+    segment_characters_by_line,
 )
 from ocr.synthetic_data import IMAGE_SIZE, _available_fonts, render_character
 
@@ -66,6 +68,26 @@ class TestFindConnectedComponents(unittest.TestCase):
 
     def test_empty_mask_finds_nothing(self):
         self.assertEqual(find_connected_components([False] * 25, 5, 5), [])
+
+
+class TestGroupIntoLines(unittest.TestCase):
+    def test_groups_boxes_into_separate_lines_preserving_structure(self):
+        boxes = [
+            (20, 0, 29, 9), (0, 0, 9, 9), (10, 0, 19, 9),  # line 1
+            (0, 50, 9, 59),                                 # line 2
+        ]
+        lines = group_into_lines(boxes)
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0], [(0, 0, 9, 9), (10, 0, 19, 9), (20, 0, 29, 9)])
+        self.assertEqual(lines[1], [(0, 50, 9, 59)])
+
+    def test_flattening_group_into_lines_matches_group_into_reading_order(self):
+        boxes = [(20, 0, 29, 9), (0, 0, 9, 9), (0, 50, 9, 59), (10, 0, 19, 9)]
+        flat = [box for line in group_into_lines(boxes) for box in line]
+        self.assertEqual(flat, group_into_reading_order(boxes))
+
+    def test_empty_input_returns_empty_list(self):
+        self.assertEqual(group_into_lines([]), [])
 
 
 class TestGroupIntoReadingOrder(unittest.TestCase):
@@ -138,6 +160,31 @@ class TestSegmentCharacters(unittest.TestCase):
     def test_blank_image_finds_nothing(self):
         blank = Image.new("L", (50, 50), color=255)
         self.assertEqual(segment_characters(blank), [])
+
+    def test_segment_characters_by_line_flattens_to_the_same_result_as_segment_characters(self):
+        canvas = self._render_word("HELLO")
+        by_line = segment_characters_by_line(canvas)
+        flat = [item for line in by_line for item in line]
+        self.assertEqual([box for _, box in flat], [box for _, box in segment_characters(canvas)])
+
+    def test_segment_characters_by_line_separates_two_stacked_words(self):
+        font_path = _available_fonts()[0]
+        rng = random.Random(0)
+        top = Image.new("L", (IMAGE_SIZE * 2, IMAGE_SIZE), color=255)
+        for i, ch in enumerate("AB"):
+            top.paste(render_character(ch, font_path, 22, rng, jitter_px=0, max_rotation_degrees=0), (i * IMAGE_SIZE, 0))
+        bottom = Image.new("L", (IMAGE_SIZE * 2, IMAGE_SIZE), color=255)
+        for i, ch in enumerate("CD"):
+            bottom.paste(render_character(ch, font_path, 22, rng, jitter_px=0, max_rotation_degrees=0), (i * IMAGE_SIZE, 0))
+
+        canvas = Image.new("L", (IMAGE_SIZE * 2, IMAGE_SIZE * 3), color=255)
+        canvas.paste(top, (0, 0))
+        canvas.paste(bottom, (0, IMAGE_SIZE * 2))  # a full blank row of separation between the two "lines"
+
+        by_line = segment_characters_by_line(canvas)
+        self.assertEqual(len(by_line), 2)
+        self.assertEqual(len(by_line[0]), 2)
+        self.assertEqual(len(by_line[1]), 2)
 
     def test_a_single_stray_pixel_is_filtered_as_noise(self):
         canvas = Image.new("L", (50, 50), color=255)

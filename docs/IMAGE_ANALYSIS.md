@@ -16,6 +16,7 @@ Given raw image bytes, `analysis/image_analysis.py`'s `analyze_image()` returns:
 - **Brightness & contrast** — mean and standard deviation of the grayscale-converted image. A flat, solid-color image has near-zero stddev; a high-contrast image has a large one.
 - **Dominant colors** — via **median-cut color quantization**: a real, decades-old algorithm that repeatedly splits the image's color space along its widest axis until only `N` (5) representative colors remain, each weighted by the fraction of pixels closest to it. Downsampled to 150×150 first for speed; the resulting colors are the same either way, just cheaper to compute.
 - **EXIF metadata** — camera make/model, timestamp, exposure settings, etc., *if the file actually embeds them* (most pasted screenshots and re-saved images won't). Binary/structural EXIF entries (GPS IFD pointers, MakerNote blobs) are deliberately excluded rather than guessed at or dumped as opaque bytes.
+- **`ocr_text`** — text extracted by a separate, from-scratch OCR pipeline (segmentation + a trained CNN classifier, no external model), `null` if no OCR checkpoint is available on this server. See `docs/OCR.md` for the full story, including its real, honestly-documented limitations.
 
 ## Where it lives
 
