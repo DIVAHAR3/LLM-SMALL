@@ -46,7 +46,7 @@ Phase 18 already logs every request (prompt length, generation params) to consol
 
 ## Planned, not yet implemented (deployment-dependent)
 
-These genuinely cannot be meaningfully implemented against `127.0.0.1` with no real domain — they're deployment-time concerns, planned for when Phase 31 (deployment plan) and Phase 32 (Docker) produce an actual target to deploy to.
+These genuinely cannot be meaningfully implemented against `127.0.0.1` with no real domain — they're deployment-time concerns. Phase 31 (`docs/DEPLOYMENT_PLAN.md`) has since written the full operational plan (process management, restarts, logs, health checks, resource limits) around the HTTPS/reverse-proxy path sketched below; Phase 32 (Docker) is where an actual deployable target gets built.
 
 ### HTTPS
 

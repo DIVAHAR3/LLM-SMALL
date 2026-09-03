@@ -406,6 +406,29 @@ class TestFormatEvent(unittest.TestCase):
         self.assertEqual(format_event({"chunk": "a"}), 'data: {"chunk": "a"}\n\n')
 
 
+class TestLogRotation(unittest.TestCase):
+    """Logging config, like CORS, is fixed at module-import time (see
+    setUp's note above) -- this inspects whatever the FIRST import of
+    api.main actually configured, rather than patching env vars per
+    test (which wouldn't take effect)."""
+
+    def test_file_handler_is_a_rotating_handler_not_an_unbounded_one(self):
+        import logging.handlers
+        import api.main  # noqa: F401 -- ensures logging config has run
+
+        file_handlers = [h for h in logging.getLogger().handlers if isinstance(h, logging.FileHandler)]
+        self.assertEqual(len(file_handlers), 1)
+        self.assertIsInstance(file_handlers[0], logging.handlers.RotatingFileHandler)
+
+    def test_rotating_handler_has_a_positive_bounded_size_and_backup_count(self):
+        import logging.handlers
+        import api.main  # noqa: F401
+
+        handler = next(h for h in logging.getLogger().handlers if isinstance(h, logging.handlers.RotatingFileHandler))
+        self.assertGreater(handler.maxBytes, 0)
+        self.assertGreater(handler.backupCount, 0)
+
+
 class TestParseAllowedOrigins(unittest.TestCase):
     def test_empty_or_none_gives_no_origins(self):
         from api.security import parse_allowed_origins

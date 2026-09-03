@@ -8,6 +8,7 @@ docs/SECURITY.md for the full written plan).
 """
 import io
 import logging
+import logging.handlers
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -43,10 +44,24 @@ IMAGE_MAX_BYTES = 5_000_000  # 5 MB -- generous for a phone photo/screenshot,
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
+# A plain FileHandler grows logs/api.log forever -- fine for a short local
+# dev session, a real problem for a long-running deployed server (Phase 31).
+# RotatingFileHandler caps it: once a file hits LOG_MAX_BYTES, it's rotated
+# to api.log.1, .2, ... up to LOG_BACKUP_COUNT, oldest deleted -- bounded
+# total disk use (default here: 5MB x 6 files = 30MB max) with no ongoing
+# maintenance required.
+LOG_MAX_BYTES = int(os.environ.get("LOG_MAX_BYTES", 5_000_000))
+LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_COUNT", 5))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler(LOG_DIR / "api.log")],
+    handlers=[
+        logging.StreamHandler(),
+        logging.handlers.RotatingFileHandler(
+            LOG_DIR / "api.log", maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding="utf-8",
+        ),
+    ],
 )
 logger = logging.getLogger("api")
 
