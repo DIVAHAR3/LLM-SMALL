@@ -35,7 +35,7 @@ def evaluate(model, val_loader):
     return {"loss": total_loss / max(total, 1), "accuracy": correct / max(total, 1)}
 
 
-def train(model, train_loader, val_loader, learning_rate=1e-3, epochs=10, checkpoint_path=None, log_fn=print):
+def train(model, train_loader, val_loader, learning_rate=1e-3, epochs=10, checkpoint_path=None, seed=None, log_fn=print):
     optimizer = AdamW(model.parameters(), lr=learning_rate)
     history = {"train_loss": [], "val_loss": [], "val_accuracy": []}
 
@@ -62,7 +62,7 @@ def train(model, train_loader, val_loader, learning_rate=1e-3, epochs=10, checkp
         )
 
     if checkpoint_path is not None:
-        config = {"learning_rate": learning_rate, "epochs": epochs}
+        config = {"learning_rate": learning_rate, "epochs": epochs, "seed": seed}
         save_checkpoint(checkpoint_path, model, optimizer, epoch=epochs, step=epochs, config=config, metrics=history)
         log_fn(f"Saved checkpoint to {checkpoint_path}")
 

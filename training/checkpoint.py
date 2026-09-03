@@ -1,6 +1,7 @@
 import torch
 
 from model.gpt import GPTModel
+from training.reproducibility import capture_run_metadata
 
 
 def save_checkpoint(path, model, optimizer, epoch, step, config, metrics):
@@ -12,7 +13,16 @@ def save_checkpoint(path, model, optimizer, epoch, step, config, metrics):
     produced this run, and metrics logged so far. Storing model_config
     alongside model_state_dict is what makes load_for_inference() able to
     reconstruct the correct model from the checkpoint file alone, with no
-    separate config file required."""
+    separate config file required.
+
+    Also self-describing about HOW this run could be reproduced (Phase
+    29): git commit, dataset provenance, and software/hardware
+    environment, captured automatically for every checkpoint -- callers
+    don't need to remember to ask for it. The seed itself is only
+    meaningful if the caller actually applied it via
+    training.reproducibility.set_seed() before constructing the model;
+    recording it here doesn't retroactively make an unseeded run
+    reproducible."""
     torch.save(
         {
             "model_config": model.config,
@@ -22,6 +32,7 @@ def save_checkpoint(path, model, optimizer, epoch, step, config, metrics):
             "step": step,
             "training_config": config,
             "metrics": metrics,
+            "reproducibility": capture_run_metadata(seed=config.get("seed")),
         },
         path,
     )

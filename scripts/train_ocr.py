@@ -18,6 +18,7 @@ from ocr.model import CharacterCNN  # noqa: E402
 from ocr.synthetic_data import generate_dataset  # noqa: E402
 from ocr.train import train  # noqa: E402
 from training.data_prep import split_documents  # noqa: E402
+from training.reproducibility import set_seed  # noqa: E402
 
 MODEL_CONFIG_PATH = ROOT / "configs" / "ocr_model_config.json"
 OUTPUT_CHECKPOINT = ROOT / "checkpoints" / "ocr_character_cnn.pt"
@@ -31,6 +32,11 @@ SEED = 1337
 
 
 def main():
+    # Must happen BEFORE the model is constructed -- weight init draws
+    # from the RNG immediately, so seeding any later would miss it
+    # (see training/reproducibility.py).
+    set_seed(SEED)
+
     model_config = json.loads(MODEL_CONFIG_PATH.read_text(encoding="utf-8"))
     model = CharacterCNN.from_config(model_config)
     print(f"model: {model.num_parameters():,} params")
@@ -48,7 +54,7 @@ def main():
     t0 = time.time()
     history = train(
         model, train_loader, val_loader,
-        learning_rate=LEARNING_RATE, epochs=EPOCHS, checkpoint_path=str(OUTPUT_CHECKPOINT),
+        learning_rate=LEARNING_RATE, epochs=EPOCHS, checkpoint_path=str(OUTPUT_CHECKPOINT), seed=SEED,
     )
     elapsed = time.time() - t0
     print(f"\nelapsed: {elapsed:.1f}s")

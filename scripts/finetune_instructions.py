@@ -17,6 +17,7 @@ from tokenizer.char_tokenizer import CharTokenizer  # noqa: E402
 from training.checkpoint import load_for_inference  # noqa: E402
 from training.data_prep import clean_text, split_documents, split_into_paragraphs  # noqa: E402
 from training.dataset import TextDataset  # noqa: E402
+from training.reproducibility import set_seed  # noqa: E402
 from training.train import train  # noqa: E402
 
 BASE_CHECKPOINT = ROOT / "checkpoints" / "phase13_run.pt"
@@ -26,6 +27,13 @@ OUTPUT_CHECKPOINT = ROOT / "checkpoints" / "phase26_instruction_tuned.pt"
 
 MAX_STEPS = 300
 FINE_TUNE_LR = 5e-5  # deliberately lower than pretraining's 3e-4, to adapt rather than overwrite
+SEED = 1337
+
+# Model weights here come from an already-trained checkpoint, not fresh
+# random init, but the fine-tuning process itself (DataLoader shuffling,
+# dropout) still draws from PyTorch's global RNG -- seed before any of
+# that starts, same principle as scripts/train_ocr.py.
+set_seed(SEED)
 
 # Reuse the EXISTING tokenizer -- must not rebuild it, or the fine-tuned
 # model's token ids would no longer match the pretrained embedding table.
@@ -33,7 +41,7 @@ tokenizer = CharTokenizer.load(str(TOKENIZER_PATH))
 
 raw_text = INSTRUCTIONS_PATH.read_text(encoding="utf-8")
 documents = [clean_text(p) for p in split_into_paragraphs(raw_text)]
-train_docs, val_docs = split_documents(documents, val_split_ratio=0.15, seed=1337)
+train_docs, val_docs = split_documents(documents, val_split_ratio=0.15, seed=SEED)
 
 train_ids = tokenizer.encode("\n\n".join(train_docs))
 val_ids = tokenizer.encode("\n\n".join(val_docs))

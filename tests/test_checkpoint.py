@@ -180,6 +180,22 @@ class TestLoadForInference(unittest.TestCase):
         reloaded = generate_ids(reloaded_model, prompt_ids, max_new_tokens=10, greedy=True)
         self.assertEqual(original, reloaded)
 
+    def test_saved_checkpoint_includes_reproducibility_metadata(self):
+        checkpoint = torch.load(self.path, weights_only=False)
+        self.assertIn("reproducibility", checkpoint)
+        repro = checkpoint["reproducibility"]
+        self.assertIn("git_commit", repro)
+        self.assertIn("git_dirty", repro)
+        self.assertIn("environment", repro)
+        self.assertIn("dataset", repro)
+
+    def test_reproducibility_seed_comes_from_the_training_config(self):
+        seeded_path = str(Path(self.tmpdir.name) / "seeded.pt")
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-2)
+        save_checkpoint(seeded_path, self.model, optimizer, epoch=0, step=1, config={"seed": 999}, metrics={})
+        checkpoint = torch.load(seeded_path, weights_only=False)
+        self.assertEqual(checkpoint["reproducibility"]["seed"], 999)
+
     def test_raises_clear_error_on_legacy_checkpoint_missing_model_config(self):
         legacy_path = str(Path(self.tmpdir.name) / "legacy.pt")
         torch.save(
