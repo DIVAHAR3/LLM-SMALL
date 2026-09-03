@@ -1,4 +1,5 @@
-# GPT-from-Scratch
+# GPTbot
+
 
 An educational, decoder-only GPT-style Transformer built in PyTorch from scratch, trained on this machine, and eventually served via FastAPI with a React/Vite chat UI.
 
