@@ -1,0 +1,9 @@
+{
+  "_comment": "Small from-scratch CNN character classifier for OCR (see docs/OCR.md). image_size must match ocr/synthetic_data.py's IMAGE_SIZE (28) and be divisible by 4 (two 2x2 max-pool stages). num_classes must match len(ocr.synthetic_data.CHARACTERS) (62: A-Z, a-z, 0-9).",
+  "image_size": 28,
+  "num_classes": 62,
+  "conv1_channels": 16,
+  "conv2_channels": 32,
+  "hidden_dim": 128,
+  "dropout": 0.2
+}
