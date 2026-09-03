@@ -10,7 +10,6 @@ Run from the project root:
     .venv\\Scripts\\python.exe scripts\\benchmark.py
 """
 import argparse
-import ctypes
 import json
 import sys
 import time
@@ -26,34 +25,7 @@ from model.gpt import GPTModel  # noqa: E402
 from tokenizer.char_tokenizer import CharTokenizer  # noqa: E402
 from training.checkpoint import load_for_inference  # noqa: E402
 from training.loss import cross_entropy_loss  # noqa: E402
-
-
-def get_available_memory_mb():
-    """Windows-specific: queries available physical memory directly via
-    ctypes (stdlib -- no psutil dependency). Returns None on non-Windows
-    platforms or if the call fails, rather than guessing; callers must
-    handle that, not assume a number."""
-    try:
-        class MEMORYSTATUSEX(ctypes.Structure):
-            _fields_ = [
-                ("dwLength", ctypes.c_ulong),
-                ("dwMemoryLoad", ctypes.c_ulong),
-                ("ullTotalPhys", ctypes.c_ulonglong),
-                ("ullAvailPhys", ctypes.c_ulonglong),
-                ("ullTotalPageFile", ctypes.c_ulonglong),
-                ("ullAvailPageFile", ctypes.c_ulonglong),
-                ("ullTotalVirtual", ctypes.c_ulonglong),
-                ("ullAvailVirtual", ctypes.c_ulonglong),
-                ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
-            ]
-
-        stat = MEMORYSTATUSEX()
-        stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
-            return None
-        return stat.ullAvailPhys / (1024 * 1024)
-    except Exception:
-        return None
+from training.monitoring import get_available_memory_mb  # noqa: E402
 
 
 def benchmark_inference(checkpoint_path, tokenizer_path, prompt, max_new_tokens_list, repeats=3):

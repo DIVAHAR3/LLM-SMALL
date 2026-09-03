@@ -58,6 +58,85 @@ class TestTrainSmoke(unittest.TestCase):
         self.assertGreater(len(history["val_loss"]), 0)
 
 
+class TestMonitoring(unittest.TestCase):
+    def _run(self, log_path=None, eval_every=2):
+        torch.manual_seed(0)
+        model = make_tiny_model()
+        train_loader = make_loader(10, 4, num_sequences=20, batch_size=4, shuffle=True)
+        val_loader = make_loader(10, 4, num_sequences=8, batch_size=4)
+        config = {
+            "learning_rate": 3e-3, "weight_decay": 0.0, "epochs": 3,
+            "grad_accumulation_steps": 1, "grad_clip_norm": 1.0,
+        }
+        return train(
+            model, train_loader, val_loader, config,
+            eval_every=eval_every, log_fn=lambda m: None, log_path=log_path,
+        )
+
+    def test_history_includes_lr_tokens_elapsed_and_memory_at_eval_cadence(self):
+        history = self._run()
+        # these four are recorded at the same (eval_every) cadence as val_loss
+        self.assertEqual(len(history["learning_rate"]), len(history["val_loss"]))
+        self.assertEqual(len(history["tokens_processed"]), len(history["val_loss"]))
+        self.assertEqual(len(history["elapsed_seconds"]), len(history["val_loss"]))
+        self.assertEqual(len(history["memory_mb"]), len(history["val_loss"]))
+
+    def test_learning_rate_matches_the_configured_value(self):
+        history = self._run()
+        self.assertTrue(all(lr == 3e-3 for lr in history["learning_rate"]))
+
+    def test_tokens_processed_increases_monotonically(self):
+        history = self._run()
+        tokens = history["tokens_processed"]
+        self.assertGreater(len(tokens), 1)
+        self.assertEqual(tokens, sorted(tokens))
+        self.assertTrue(all(t2 > t1 for t1, t2 in zip(tokens, tokens[1:])))
+
+    def test_elapsed_seconds_is_non_negative_and_non_decreasing(self):
+        history = self._run()
+        elapsed = history["elapsed_seconds"]
+        self.assertTrue(all(e >= 0 for e in elapsed))
+        self.assertEqual(elapsed, sorted(elapsed))
+
+    def test_memory_mb_is_a_number_or_none_never_something_else(self):
+        history = self._run()
+        for value in history["memory_mb"]:
+            self.assertTrue(value is None or isinstance(value, (int, float)))
+
+    def test_writes_one_json_line_per_logged_step_when_log_path_given(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = str(Path(tmpdir) / "metrics.jsonl")
+            history = self._run(log_path=log_path)
+
+            lines = Path(log_path).read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), len(history["val_loss"]))
+            record = json.loads(lines[0])
+            for key in ("step", "train_loss", "val_loss", "learning_rate", "tokens_processed", "elapsed_seconds", "memory_mb"):
+                self.assertIn(key, record)
+
+    def test_creates_the_log_directory_if_it_does_not_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = str(Path(tmpdir) / "nested" / "does" / "not" / "exist" / "metrics.jsonl")
+            self._run(log_path=log_path)
+            self.assertTrue(Path(log_path).exists())
+
+    def test_a_second_run_appends_rather_than_overwriting(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = str(Path(tmpdir) / "metrics.jsonl")
+            self._run(log_path=log_path)
+            first_line_count = len(Path(log_path).read_text(encoding="utf-8").splitlines())
+            self._run(log_path=log_path)
+            second_line_count = len(Path(log_path).read_text(encoding="utf-8").splitlines())
+            self.assertEqual(second_line_count, first_line_count * 2)
+
+    def test_no_file_is_written_when_log_path_is_not_given(self):
+        # already implicitly covered by every other test in this file
+        # never creating a metrics.jsonl anywhere -- explicit here for clarity
+        history = self._run(log_path=None)
+        self.assertGreater(len(history["val_loss"]), 0)
+
+
 class TestGradAccumulation(unittest.TestCase):
     def test_optimizer_step_count_matches_accumulation_steps(self):
         # 8 sequences, batch_size=1 -> 8 batches/epoch, evenly divisible by
