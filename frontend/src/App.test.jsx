@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -101,6 +101,62 @@ describe('App', () => {
     expect(screen.queryByText('hi')).not.toBeInTheDocument()
     expect(screen.queryByText('reply')).not.toBeInTheDocument()
     expect(screen.getByText(/send a prompt/i)).toBeInTheDocument()
+  })
+
+  it('pastes an image, sends it for analysis, and renders the returned JSON', async () => {
+    const analysis = { format: 'PNG', width: 10, height: 10, dominant_colors: [{ hex: '#000000', percent: 100 }] }
+    api.analyzeImage.mockResolvedValue(analysis)
+    render(<App />)
+
+    const file = new File(['fake bytes'], 'photo.png', { type: 'image/png' })
+    const clipboardData = { items: [{ type: 'image/png', getAsFile: () => file }] }
+    fireEvent.paste(screen.getByPlaceholderText(/type a prompt/i), { clipboardData })
+
+    expect(screen.getByText(/pasted image/i)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/"format": "PNG"/)).toBeInTheDocument())
+    expect(api.analyzeImage).toHaveBeenCalledWith(file)
+  })
+
+  it('shows an error banner when image analysis fails', async () => {
+    api.analyzeImage.mockRejectedValue(new Error('could not decode image: broken'))
+    render(<App />)
+
+    const file = new File(['bad bytes'], 'bad.png', { type: 'image/png' })
+    const clipboardData = { items: [{ type: 'image/png', getAsFile: () => file }] }
+    fireEvent.paste(screen.getByPlaceholderText(/type a prompt/i), { clipboardData })
+
+    await waitFor(() => expect(screen.getByText(/could not decode image/i)).toBeInTheDocument())
+  })
+
+  it('ignores a plain text paste (no image clipboard item)', async () => {
+    render(<App />)
+
+    const clipboardData = { items: [{ type: 'text/plain', getAsFile: () => null }] }
+    fireEvent.paste(screen.getByPlaceholderText(/type a prompt/i), { clipboardData })
+
+    expect(api.analyzeImage).not.toHaveBeenCalled()
+  })
+
+  it('ignores a pasted image while a request is already in flight', async () => {
+    let finishStream
+    api.generateTextStream.mockReturnValue(
+      new Promise((resolve) => {
+        finishStream = resolve
+      }),
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByPlaceholderText(/type a prompt/i), 'hi')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+    expect(screen.getByPlaceholderText(/type a prompt/i)).toBeDisabled()
+
+    const file = new File(['fake bytes'], 'photo.png', { type: 'image/png' })
+    const clipboardData = { items: [{ type: 'image/png', getAsFile: () => file }] }
+    fireEvent.paste(screen.getByPlaceholderText(/type a prompt/i), { clipboardData })
+
+    expect(api.analyzeImage).not.toHaveBeenCalled()
+    finishStream()
   })
 
   it('does not send while a request is already in flight', async () => {

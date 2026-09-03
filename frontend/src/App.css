@@ -92,6 +92,22 @@ header h1 {
   color: var(--assistant-bubble-text);
 }
 
+.bubble.analysis {
+  align-self: flex-start;
+  max-width: 90%;
+  background: var(--bg-alt);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+}
+
+.bubble.analysis pre {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+}
+
 .bubble.loading p {
   opacity: 0.6;
 }

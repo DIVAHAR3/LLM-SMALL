@@ -3,11 +3,13 @@ import os
 import sys
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
 import torch
 from fastapi.testclient import TestClient
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -235,6 +237,80 @@ class TestAPI(unittest.TestCase):
             response = client.post("/generate/stream", json={"prompt": ""}, headers=self.auth_headers)
         self.assertEqual(response.status_code, 422)
 
+    # --- Image analysis (classical, no ML) ---
+
+    def test_analyze_image_returns_expected_shape_for_a_valid_image(self):
+        image = Image.new("RGB", (20, 10), color=(10, 20, 30))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        with TestClient(self.api_main.app) as client:
+            response = client.post(
+                "/analyze/image",
+                files={"file": ("test.png", buffer.getvalue(), "image/png")},
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["width"], 20)
+        self.assertEqual(body["height"], 10)
+        self.assertEqual(body["format"], "PNG")
+        self.assertEqual(len(body["dominant_colors"]), 1)
+        self.assertEqual(body["dominant_colors"][0]["hex"], "#0a141e")
+
+    def test_analyze_image_rejects_non_image_bytes(self):
+        with TestClient(self.api_main.app) as client:
+            response = client.post(
+                "/analyze/image",
+                files={"file": ("not-an-image.png", b"this is not an image", "image/png")},
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_analyze_image_rejects_missing_api_key(self):
+        image = Image.new("RGB", (5, 5), color=(0, 0, 0))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        with TestClient(self.api_main.app) as client:
+            response = client.post("/analyze/image", files={"file": ("t.png", buffer.getvalue(), "image/png")})
+        self.assertEqual(response.status_code, 401)
+
+    def test_analyze_image_respects_rate_limit(self):
+        image = Image.new("RGB", (5, 5), color=(0, 0, 0))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        with patch.dict(os.environ, {"RATE_LIMIT_REQUESTS": "1", "RATE_LIMIT_WINDOW_SECONDS": "60"}):
+            with TestClient(self.api_main.app) as client:
+                first = client.post(
+                    "/analyze/image", files={"file": ("t.png", buffer.getvalue(), "image/png")}, headers=self.auth_headers,
+                )
+                second = client.post(
+                    "/analyze/image", files={"file": ("t.png", buffer.getvalue(), "image/png")}, headers=self.auth_headers,
+                )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)
+
+    def test_analyze_image_rejects_oversized_upload(self):
+        # exceeds the RequestSizeLimitMiddleware override for /analyze/image
+        huge_payload = b"\x00" * (self.api_main.IMAGE_MAX_BYTES + 1)
+        with TestClient(self.api_main.app) as client:
+            response = client.post(
+                "/analyze/image", files={"file": ("t.png", huge_payload, "image/png")}, headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, 413)
+
+    def test_analyze_image_allows_upload_larger_than_the_default_json_limit(self):
+        # a real photo easily exceeds /generate's 10,000-byte default limit
+        # but must still be accepted here, under the higher override
+        image = Image.new("RGB", (300, 300), color=(50, 100, 150))
+        buffer = BytesIO()
+        image.save(buffer, format="BMP")  # uncompressed -- reliably > 10,000 bytes
+        self.assertGreater(len(buffer.getvalue()), 10_000)
+        with TestClient(self.api_main.app) as client:
+            response = client.post(
+                "/analyze/image", files={"file": ("t.bmp", buffer.getvalue(), "image/bmp")}, headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, 200)
+
     def test_stream_emits_error_event_without_leaking_internals_on_failure(self):
         # A real stream_ids(...) call never raises synchronously -- it's a
         # generator function, so its body (and any error inside it) only
@@ -307,6 +383,23 @@ class TestRateLimiter(unittest.TestCase):
         # simulate the window having fully elapsed
         limiter._requests["client-a"][0] -= 61
         self.assertTrue(limiter.is_allowed("client-a"))
+
+
+class TestRequestSizeLimitMiddlewarePathOverrides(unittest.TestCase):
+    def test_unmatched_path_uses_the_default_limit(self):
+        from api.security import RequestSizeLimitMiddleware
+        middleware = RequestSizeLimitMiddleware(app=None, max_bytes=10_000, path_overrides={"/analyze/image": 5_000_000})
+        self.assertEqual(middleware._limit_for("/generate"), 10_000)
+
+    def test_matched_path_prefix_uses_its_override(self):
+        from api.security import RequestSizeLimitMiddleware
+        middleware = RequestSizeLimitMiddleware(app=None, max_bytes=10_000, path_overrides={"/analyze/image": 5_000_000})
+        self.assertEqual(middleware._limit_for("/analyze/image"), 5_000_000)
+
+    def test_no_overrides_configured_behaves_like_before(self):
+        from api.security import RequestSizeLimitMiddleware
+        middleware = RequestSizeLimitMiddleware(app=None, max_bytes=10_000)
+        self.assertEqual(middleware._limit_for("/anything"), 10_000)
 
 
 if __name__ == "__main__":

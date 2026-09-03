@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { generateText, generateTextStream } from './api'
+import { analyzeImage, generateText, generateTextStream } from './api'
 
 function makeMockReader(rawChunks) {
   let index = 0
@@ -119,5 +119,40 @@ describe('generateTextStream', () => {
     })
 
     await expect(generateTextStream('hi', {}, () => {})).rejects.toThrow('Invalid or missing API key.')
+  })
+})
+
+describe('analyzeImage', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('POSTs the file as multipart form data with the API key header, no Content-Type override', async () => {
+    const analysis = { format: 'PNG', width: 10, height: 10, dominant_colors: [] }
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => analysis })
+    const file = new File(['fake image bytes'], 'photo.png', { type: 'image/png' })
+
+    const result = await analyzeImage(file)
+
+    expect(result).toEqual(analysis)
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [url, options] = global.fetch.mock.calls[0]
+    expect(url).toBe(`${import.meta.env.VITE_API_URL}/analyze/image`)
+    expect(options.method).toBe('POST')
+    expect(options.headers['X-API-Key']).toBe(import.meta.env.VITE_API_KEY)
+    expect(options.headers['Content-Type']).toBeUndefined()
+    expect(options.body).toBeInstanceOf(FormData)
+    expect(options.body.get('file')).toBe(file)
+  })
+
+  it('throws with the response detail on a non-ok response', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      statusText: 'Bad Request',
+      json: async () => ({ detail: 'could not decode image: broken' }),
+    })
+    const file = new File(['not an image'], 'bad.png', { type: 'image/png' })
+
+    await expect(analyzeImage(file)).rejects.toThrow('could not decode image: broken')
   })
 })

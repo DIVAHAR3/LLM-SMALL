@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { generateTextStream } from './api'
+import { analyzeImage, generateTextStream } from './api'
 import './App.css'
+
+const BUBBLE_LABELS = { user: 'You', assistant: 'Model', analysis: 'Image analysis' }
 
 function MessageBubble({ role, text }) {
   return (
     <div className={`bubble ${role}`}>
-      <span className="bubble-label">{role === 'user' ? 'You' : 'Model'}</span>
-      <p>{text}</p>
+      <span className="bubble-label">{BUBBLE_LABELS[role] ?? role}</span>
+      {role === 'analysis' ? <pre>{text}</pre> : <p>{text}</p>}
     </div>
   )
 }
@@ -51,6 +53,29 @@ function App() {
     }
   }
 
+  async function handlePaste(event) {
+    if (loading) return  // the input is disabled while loading, but guard
+    // directly too -- matches handleSend's own `loading` check below, and
+    // stays correct even if a paste target other than this input is ever added
+    const item = Array.from(event.clipboardData.items).find((clipboardItem) => clipboardItem.type.startsWith('image/'))
+    if (!item) return  // plain text paste -- let the browser handle it normally
+    event.preventDefault()
+
+    const file = item.getAsFile()
+    setMessages((prev) => [...prev, { role: 'user', text: `📷 pasted image (${file.type})` }])
+    setLoading(true)
+    setError(null)
+
+    try {
+      const result = await analyzeImage(file)
+      setMessages((prev) => [...prev, { role: 'analysis', text: JSON.stringify(result, null, 2) }])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function handleClear() {
     setMessages([])
     setError(null)
@@ -63,7 +88,7 @@ function App() {
     <div className="chat-app">
       <header>
         <div>
-          <h1>GPT-from-Scratch</h1>
+          <h1>GPTbot</h1>
           <p className="subtitle">A tiny, self-trained model — expect pattern-matching, not coherent conversation.</p>
         </div>
         <button type="button" className="clear-button" onClick={handleClear} disabled={messages.length === 0}>
@@ -91,7 +116,8 @@ function App() {
           type="text"
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="Type a prompt…"
+          onPaste={handlePaste}
+          placeholder="Type a prompt, or paste an image to analyze…"
           disabled={loading}
         />
         <button type="submit" disabled={loading || !input.trim()}>

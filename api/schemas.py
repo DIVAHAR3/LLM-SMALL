@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -20,3 +20,26 @@ class HealthResponse(BaseModel):
     status: str
     checkpoint: str
     params: int
+
+
+class BrightnessStats(BaseModel):
+    mean: float
+    stddev: float
+
+
+class DominantColor(BaseModel):
+    hex: str
+    percent: float
+
+
+class ImageAnalysisResponse(BaseModel):
+    format: str
+    mode: str
+    width: int
+    height: int
+    aspect_ratio: float
+    size_bytes: int
+    megapixels: float
+    brightness: BrightnessStats
+    dominant_colors: list[DominantColor]
+    exif: dict[str, Union[str, int, float]]

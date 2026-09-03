@@ -43,15 +43,28 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     """Rejects requests whose Content-Length exceeds max_bytes BEFORE the
     body is read into memory. Pydantic's field constraints (Phase 18) only
     apply after the JSON body has already been parsed -- too late to
-    prevent memory pressure from a maliciously huge payload."""
+    prevent memory pressure from a maliciously huge payload.
 
-    def __init__(self, app, max_bytes=10_000):
+    path_overrides lets specific routes use a different limit than the
+    default -- e.g. an image upload endpoint legitimately needs a much
+    higher cap than a short JSON prompt, without loosening the limit for
+    every other route."""
+
+    def __init__(self, app, max_bytes=10_000, path_overrides=None):
         super().__init__(app)
         self.max_bytes = max_bytes
+        self.path_overrides = path_overrides or {}
+
+    def _limit_for(self, path):
+        for prefix, limit in self.path_overrides.items():
+            if path.startswith(prefix):
+                return limit
+        return self.max_bytes
 
     async def dispatch(self, request: Request, call_next):
+        limit = self._limit_for(request.url.path)
         content_length = request.headers.get("content-length")
-        if content_length is not None and int(content_length) > self.max_bytes:
+        if content_length is not None and int(content_length) > limit:
             logger.warning(f"rejected oversized request: {content_length} bytes from {request.client}")
             return JSONResponse(status_code=413, content={"detail": "Request body too large."})
         return await call_next(request)

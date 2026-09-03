@@ -30,6 +30,8 @@ In-memory fixed-window limiter (`api/security.py:RateLimiter`), default 20 reque
 
 `api/security.py:RequestSizeLimitMiddleware` rejects any request whose `Content-Length` exceeds 10,000 bytes with `413 Request Entity Too Large`, **before** the body is read into memory. This matters because Pydantic's field constraints (e.g. `prompt` capped at 2000 characters, from Phase 18) only apply *after* the JSON has already been parsed — a large-enough payload could still cause memory pressure during parsing itself, which is a real concern given how little free RAM this machine typically has (Phase 1: often under 1GB free).
 
+`POST /analyze/image` (added outside the numbered phase sequence — see `docs/IMAGE_ANALYSIS.md`) needs a much higher limit than a short text prompt, since it accepts real image files. Rather than loosening the default for every route, the middleware takes a `path_overrides` dict so this one route gets its own 5 MB cap while everything else keeps the original 10 KB. The endpoint also re-checks the actual decoded size after reading the upload, as defense in depth against a missing/absent `Content-Length` header (e.g. chunked transfer encoding), which the middleware alone can't catch.
+
 ### Input validation
 
 Already built in Phase 18: Pydantic field constraints on every `/generate` parameter (non-empty/length-bounded prompt, bounded `max_new_tokens`, positive `temperature`, valid `top_k`/`top_p` ranges). Verified this phase to still be correctly enforced (see `tests/test_api.py`).

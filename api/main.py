@@ -12,14 +12,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")  # must happen before any os.environ reads below
 
-from api.schemas import GenerateRequest, GenerateResponse, HealthResponse  # noqa: E402
+from analysis.image_analysis import analyze_image  # noqa: E402
+from api.schemas import GenerateRequest, GenerateResponse, HealthResponse, ImageAnalysisResponse  # noqa: E402
 from api.security import (  # noqa: E402
     RateLimiter,
     RequestSizeLimitMiddleware,
@@ -31,6 +32,9 @@ from api.sse import sse_token_stream  # noqa: E402
 from inference.generate import generate_text  # noqa: E402
 from tokenizer.char_tokenizer import CharTokenizer  # noqa: E402
 from training.checkpoint import load_for_inference  # noqa: E402
+
+IMAGE_MAX_BYTES = 5_000_000  # 5 MB -- generous for a phone photo/screenshot,
+# bounded to keep memory use predictable on a local, single-worker server
 
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -86,7 +90,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GPT-from-Scratch Inference API", lifespan=lifespan)
 
-app.add_middleware(RequestSizeLimitMiddleware, max_bytes=10_000)
+app.add_middleware(RequestSizeLimitMiddleware, max_bytes=10_000, path_overrides={"/analyze/image": IMAGE_MAX_BYTES})
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -143,3 +147,24 @@ def generate_stream(generate_request: GenerateRequest, http_request: Request):
         sse_token_stream(app.state.model, app.state.tokenizer, generate_request, http_request),
         media_type="text/event-stream",
     )
+
+
+@app.post("/analyze/image", response_model=ImageAnalysisResponse, dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
+async def analyze_image_endpoint(file: UploadFile = File(...)):
+    """Classical, deterministic image analysis -- no model, no training,
+    no external calls (see docs/IMAGE_ANALYSIS.md). Not part of the GPT
+    model at all; this is plain code computing real properties of the
+    image's own pixels."""
+    image_bytes = await file.read()
+    if len(image_bytes) > IMAGE_MAX_BYTES:
+        # Defense in depth: RequestSizeLimitMiddleware already checks
+        # Content-Length, but that header can be absent (chunked
+        # transfer) -- this catches that case too, after the fact.
+        raise HTTPException(status_code=413, detail="Image too large.")
+
+    logger.info(f"analyze/image: filename={file.filename!r} size_bytes={len(image_bytes)}")
+    try:
+        result = analyze_image(image_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return ImageAnalysisResponse(**result)

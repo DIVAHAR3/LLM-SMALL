@@ -47,3 +47,9 @@ Work exactly one phase at a time per the protocol in `CLAUDE.md`. Each entry bel
 - Never treat a small model as production-equivalent.
 - Legal/local data only — no copyrighted or private data without authorization.
 - Every phase ends with a stop; resume only on `continue`.
+
+## Features added outside the numbered sequence
+
+Occasionally a feature request doesn't fit any single numbered phase above. Rather than silently renumbering the roadmap or stretching an existing phase's scope, these are tracked here explicitly, in the order they were added, each following the same protocol (concept taught, tests, report, commit) as a numbered phase.
+
+- **Image analysis (classical, no ML)** — added between Phase 28 and Phase 29. Paste an image into the chat UI, get back deterministic, measured properties (dimensions, format, brightness/contrast, dominant colors via median-cut quantization, EXIF) as JSON — no model, no training, no external API, per explicit request. See `docs/IMAGE_ANALYSIS.md`.

@@ -73,3 +73,27 @@ export async function generateTextStream(prompt, options = {}, onChunk) {
     }
   }
 }
+
+// Classical, deterministic image analysis (dimensions, colors, brightness,
+// EXIF) -- no model, no training, no external AI call. See
+// docs/IMAGE_ANALYSIS.md. Deliberately no Content-Type header: the browser
+// sets multipart/form-data with the correct boundary itself for FormData
+// bodies, and overriding it manually breaks the boundary.
+export async function analyzeImage(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${API_URL}/analyze/image`, {
+    method: 'POST',
+    headers: {
+      'X-API-Key': API_KEY,
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error(await extractErrorDetail(response))
+  }
+
+  return response.json()
+}
