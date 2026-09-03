@@ -105,13 +105,19 @@ def benchmark_inference(checkpoint_path, tokenizer_path, prompt, max_new_tokens_
     }
 
 
-def benchmark_compute_cost(batch_size, context_length, vocab_size=51, embedding_dim=128, num_layers=4, num_heads=4, ffn_hidden_dim=512, repeats=5, warmup=2):
+def benchmark_compute_cost(batch_size, context_length, model_config, repeats=5, warmup=2):
     """Raw forward+backward+optimizer-step cost for a given (batch_size,
     context_length), using a freshly-initialized (untrained) model -- this
     measures compute cost, not output quality, so no trained checkpoint is
-    needed to compare configurations that were never actually trained."""
+    needed to compare configurations that were never actually trained.
+    Every architecture dimension besides context_length (the axis being
+    swept) comes from model_config -- the project's single source of
+    truth (configs/model_config.json) -- rather than being duplicated
+    here as separate literals that could silently drift out of sync."""
     torch.manual_seed(0)
-    model = GPTModel(vocab_size, context_length, embedding_dim, num_layers, num_heads, ffn_hidden_dim, dropout=0.1)
+    config = {**model_config, "context_length": context_length}
+    model = GPTModel.from_config(config)
+    vocab_size = config["vocab_size"]
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
     x = torch.randint(0, vocab_size, (batch_size, context_length))
     y = torch.randint(0, vocab_size, (batch_size, context_length))
@@ -180,7 +186,10 @@ def main():
     parser.add_argument("--tokenizer-path", default=str(ROOT / "tokenizer" / "vocab.json"))
     parser.add_argument("--prompt", default="the model")
     parser.add_argument("--output", default=str(ROOT / "docs" / "benchmark_results.json"))
+    parser.add_argument("--model-config", default=str(ROOT / "configs" / "model_config.json"))
     args = parser.parse_args()
+
+    model_config = json.loads(Path(args.model_config).read_text(encoding="utf-8"))
 
     print("=== Inference benchmark (real trained checkpoint) ===")
     inference_report = benchmark_inference(
@@ -194,7 +203,7 @@ def main():
         (8, 128), (32, 128),
         (32, 256),
     ]
-    compute_results = [benchmark_compute_cost(b, c) for b, c in configs]
+    compute_results = [benchmark_compute_cost(b, c, model_config) for b, c in configs]
     print(format_compute_cost_report(compute_results))
 
     output = {"inference": inference_report, "compute_cost": compute_results}

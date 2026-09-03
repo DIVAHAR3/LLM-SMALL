@@ -8,7 +8,7 @@ import torch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from model.gpt import GPTModel
+from model.gpt import GPTModel, validate_model_config
 
 
 class TestGPTModel(unittest.TestCase):
@@ -145,6 +145,52 @@ class TestResizeVocab(unittest.TestCase):
     def test_rejects_shrinking_the_vocabulary(self):
         with self.assertRaises(ValueError):
             self.model.resize_vocab(self.vocab_size - 1)
+
+
+class TestValidateModelConfig(unittest.TestCase):
+    def setUp(self):
+        self.valid_config = {
+            "vocab_size": 20, "context_length": 16, "embedding_dim": 8,
+            "num_layers": 2, "num_heads": 2, "ffn_hidden_dim": 32, "dropout": 0.1,
+        }
+
+    def test_valid_config_raises_nothing(self):
+        validate_model_config(self.valid_config)  # must not raise
+
+    def test_the_real_project_config_is_valid(self):
+        config = json.loads((ROOT / "configs" / "model_config.json").read_text(encoding="utf-8"))
+        validate_model_config(config)  # must not raise
+
+    def test_rejects_missing_required_key(self):
+        del self.valid_config["num_heads"]
+        with self.assertRaises(ValueError):
+            validate_model_config(self.valid_config)
+
+    def test_rejects_non_positive_value(self):
+        self.valid_config["num_layers"] = 0
+        with self.assertRaises(ValueError):
+            validate_model_config(self.valid_config)
+
+    def test_rejects_non_integer_value(self):
+        self.valid_config["embedding_dim"] = 8.5
+        with self.assertRaises(ValueError):
+            validate_model_config(self.valid_config)
+
+    def test_rejects_dropout_out_of_range(self):
+        self.valid_config["dropout"] = 1.0
+        with self.assertRaises(ValueError):
+            validate_model_config(self.valid_config)
+
+    def test_rejects_embedding_dim_not_divisible_by_num_heads(self):
+        self.valid_config["embedding_dim"] = 9
+        self.valid_config["num_heads"] = 2
+        with self.assertRaises(ValueError):
+            validate_model_config(self.valid_config)
+
+    def test_from_config_rejects_invalid_config_before_building_anything(self):
+        bad_config = dict(self.valid_config, num_heads=3)  # 8 % 3 != 0
+        with self.assertRaises(ValueError):
+            GPTModel.from_config(bad_config)
 
 
 if __name__ == "__main__":

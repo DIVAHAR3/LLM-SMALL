@@ -16,6 +16,42 @@ _CONFIG_KEYS = {
     "qkv_bias",
 }
 
+_REQUIRED_POSITIVE_INT_KEYS = (
+    "vocab_size",
+    "context_length",
+    "embedding_dim",
+    "num_layers",
+    "num_heads",
+    "ffn_hidden_dim",
+)
+
+
+def validate_model_config(config):
+    """Checks a model_config.json-shaped dict for missing keys, wrong
+    types, and invalid values BEFORE any submodule gets constructed --
+    so a typo'd config fails with one clear message instead of a
+    confusing shape/runtime error surfacing deep inside a submodule
+    (e.g. MultiHeadAttention) after most of the model has already been
+    built."""
+    missing = [k for k in _REQUIRED_POSITIVE_INT_KEYS if k not in config]
+    if missing:
+        raise ValueError(f"model config missing required key(s): {missing}")
+
+    for key in _REQUIRED_POSITIVE_INT_KEYS:
+        value = config[key]
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"model config '{key}' must be a positive integer, got {value!r}")
+
+    dropout = config.get("dropout", 0.0)
+    if not isinstance(dropout, (int, float)) or isinstance(dropout, bool) or not (0.0 <= dropout < 1.0):
+        raise ValueError(f"model config 'dropout' must be a number in [0, 1), got {dropout!r}")
+
+    if config["embedding_dim"] % config["num_heads"] != 0:
+        raise ValueError(
+            f"model config 'embedding_dim' ({config['embedding_dim']}) must be divisible "
+            f"by 'num_heads' ({config['num_heads']})"
+        )
+
 
 class GPTModel(nn.Module):
     """Full decoder-only GPT: embeddings -> N transformer blocks -> final
@@ -64,7 +100,11 @@ class GPTModel(nn.Module):
     @classmethod
     def from_config(cls, config):
         """Build a model straight from a model_config.json-shaped dict,
-        ignoring any non-constructor keys (e.g. "_comment")."""
+        ignoring any non-constructor keys (e.g. "_comment"). Validates
+        the config first -- this is the intended entry point for every
+        real (non-test) model construction in the project, so it's
+        where an invalid config should be caught."""
+        validate_model_config(config)
         kwargs = {k: v for k, v in config.items() if k in _CONFIG_KEYS}
         return cls(**kwargs)
 

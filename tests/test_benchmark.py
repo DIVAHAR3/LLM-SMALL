@@ -27,11 +27,16 @@ class TestGetAvailableMemory(unittest.TestCase):
         self.assertTrue(result is None or result > 0)
 
 
+TINY_MODEL_CONFIG = {
+    "vocab_size": 15, "context_length": 999, "embedding_dim": 8,
+    "num_layers": 2, "num_heads": 2, "ffn_hidden_dim": 16, "dropout": 0.0,
+}
+
+
 class TestBenchmarkComputeCost(unittest.TestCase):
     def test_returns_expected_keys_with_sane_values(self):
         result = benchmark_compute_cost(
-            batch_size=2, context_length=8, vocab_size=15, embedding_dim=8,
-            num_layers=2, num_heads=2, ffn_hidden_dim=16, repeats=2, warmup=1,
+            batch_size=2, context_length=8, model_config=TINY_MODEL_CONFIG, repeats=2, warmup=1,
         )
         expected_keys = {"batch_size", "context_length", "param_count", "avg_step_time_ms", "tokens_per_sec"}
         self.assertEqual(set(result.keys()), expected_keys)
@@ -41,10 +46,17 @@ class TestBenchmarkComputeCost(unittest.TestCase):
         self.assertGreater(result["avg_step_time_ms"], 0)
         self.assertGreater(result["tokens_per_sec"], 0)
 
+    def test_context_length_argument_overrides_the_configs_own_value(self):
+        # model_config's own context_length (999) must not leak through --
+        # the context_length argument is the axis being swept.
+        result = benchmark_compute_cost(
+            batch_size=2, context_length=8, model_config=TINY_MODEL_CONFIG, repeats=1, warmup=1,
+        )
+        self.assertEqual(result["context_length"], 8)
+
     def test_tokens_per_sec_is_mathematically_consistent_with_step_time(self):
         result = benchmark_compute_cost(
-            batch_size=4, context_length=8, vocab_size=15, embedding_dim=8,
-            num_layers=2, num_heads=2, ffn_hidden_dim=16, repeats=2, warmup=1,
+            batch_size=4, context_length=8, model_config=TINY_MODEL_CONFIG, repeats=2, warmup=1,
         )
         expected_tokens_per_sec = (4 * 8) / (result["avg_step_time_ms"] / 1000)
         self.assertAlmostEqual(result["tokens_per_sec"], expected_tokens_per_sec, places=3)
@@ -54,12 +66,10 @@ class TestBenchmarkComputeCost(unittest.TestCase):
         # a shared machine) -- just confirms tokens_per_sec scales with the
         # batch_size*context_length numerator, i.e. the accounting is right.
         small = benchmark_compute_cost(
-            batch_size=2, context_length=8, vocab_size=15, embedding_dim=8,
-            num_layers=2, num_heads=2, ffn_hidden_dim=16, repeats=2, warmup=1,
+            batch_size=2, context_length=8, model_config=TINY_MODEL_CONFIG, repeats=2, warmup=1,
         )
         large = benchmark_compute_cost(
-            batch_size=8, context_length=8, vocab_size=15, embedding_dim=8,
-            num_layers=2, num_heads=2, ffn_hidden_dim=16, repeats=2, warmup=1,
+            batch_size=8, context_length=8, model_config=TINY_MODEL_CONFIG, repeats=2, warmup=1,
         )
         self.assertEqual(large["batch_size"] * large["context_length"], 8 * 8)
         self.assertEqual(small["batch_size"] * small["context_length"], 2 * 8)
