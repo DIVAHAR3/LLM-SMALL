@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 from model.embeddings import GPTEmbedding
@@ -75,6 +76,36 @@ class GPTModel(nn.Module):
 
     def num_parameters(self):
         return sum(p.numel() for p in self.parameters())
+
+    def resize_vocab(self, new_vocab_size):
+        """Grows the token embedding and LM head to new_vocab_size,
+        in place. The first old_vocab_size rows are copied EXACTLY from
+        the current (possibly pretrained) weights; only the new rows get
+        fresh random initialization. New token ids must be appended at
+        the end of the tokenizer's vocabulary (see
+        CharTokenizer.with_additional_special_tokens) for this to make
+        sense -- every existing id must keep pointing at the same
+        embedding row it was actually trained on."""
+        old_vocab_size = self.config["vocab_size"]
+        if new_vocab_size < old_vocab_size:
+            raise ValueError(f"new_vocab_size ({new_vocab_size}) must be >= current vocab_size ({old_vocab_size})")
+        if new_vocab_size == old_vocab_size:
+            return self
+
+        embedding_dim = self.config["embedding_dim"]
+        old_token_embedding = self.embedding.token_embedding
+        old_lm_head = self.lm_head
+
+        new_token_embedding = nn.Embedding(new_vocab_size, embedding_dim)
+        new_lm_head = nn.Linear(embedding_dim, new_vocab_size, bias=False)
+        with torch.no_grad():
+            new_token_embedding.weight[:old_vocab_size] = old_token_embedding.weight
+            new_lm_head.weight[:old_vocab_size] = old_lm_head.weight
+
+        self.embedding.token_embedding = new_token_embedding
+        self.lm_head = new_lm_head
+        self.config["vocab_size"] = new_vocab_size
+        return self
 
     def summary(self):
         config_str = ", ".join(f"{k}={v}" for k, v in self.config.items())

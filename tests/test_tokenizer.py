@@ -44,5 +44,42 @@ class TestCharTokenizer(unittest.TestCase):
             self.assertEqual(loaded.decode(loaded.encode(text)), text)
 
 
+class TestWithAdditionalSpecialTokens(unittest.TestCase):
+    def setUp(self):
+        self.corpus = "hello world"
+        self.tok = CharTokenizer.from_text(self.corpus)
+
+    def test_new_tokens_appended_at_the_end_not_inserted(self):
+        original_ids = dict(self.tok.char_to_id)
+        extended = self.tok.with_additional_special_tokens(["<A>", "<B>"])
+
+        # every original token keeps its EXACT original id -- this is the
+        # whole point: a pretrained embedding table indexed by these ids
+        # must stay valid, which inserting in the middle would break.
+        for token, original_id in original_ids.items():
+            self.assertEqual(extended.char_to_id[token], original_id)
+
+        self.assertEqual(extended.char_to_id["<A>"], self.tok.vocab_size)
+        self.assertEqual(extended.char_to_id["<B>"], self.tok.vocab_size + 1)
+        self.assertEqual(extended.vocab_size, self.tok.vocab_size + 2)
+
+    def test_original_tokenizer_is_not_mutated(self):
+        original_vocab_size = self.tok.vocab_size
+        self.tok.with_additional_special_tokens(["<A>"])
+        self.assertEqual(self.tok.vocab_size, original_vocab_size)
+        self.assertNotIn("<A>", self.tok.char_to_id)
+
+    def test_new_tokens_encode_and_decode_correctly(self):
+        extended = self.tok.with_additional_special_tokens(["<A>"])
+        a_id = extended.char_to_id["<A>"]
+        text_ids = extended.encode("hello")
+        full_ids = [a_id] + text_ids
+        self.assertEqual(extended.decode(full_ids, skip_special_tokens=False), "<A>hello")
+
+    def test_rejects_a_token_already_in_the_vocabulary(self):
+        with self.assertRaises(ValueError):
+            self.tok.with_additional_special_tokens([CharTokenizer.BOS_TOKEN])
+
+
 if __name__ == "__main__":
     unittest.main()

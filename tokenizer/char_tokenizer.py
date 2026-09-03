@@ -52,3 +52,20 @@ class CharTokenizer:
     def load(cls, path):
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls(data["char_to_id"])
+
+    def with_additional_special_tokens(self, new_tokens):
+        """Returns a NEW tokenizer whose vocabulary is this one's plus
+        `new_tokens`, appended at the end. Every existing token keeps its
+        exact original id -- appending, never inserting, is what lets a
+        pretrained model's embedding table stay valid for all the ids it
+        already knows; inserting in the middle would shift later ids and
+        silently corrupt the correspondence between embedding rows and the
+        characters they were actually trained on."""
+        extended = dict(self.char_to_id)
+        next_id = max(extended.values()) + 1
+        for token in new_tokens:
+            if token in extended:
+                raise ValueError(f"token {token!r} is already in the vocabulary")
+            extended[token] = next_id
+            next_id += 1
+        return CharTokenizer(extended)

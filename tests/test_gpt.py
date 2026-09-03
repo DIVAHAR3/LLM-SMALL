@@ -86,5 +86,66 @@ class TestGPTModel(unittest.TestCase):
         self.assertEqual(logits.shape, (1, 8, config["vocab_size"]))
 
 
+class TestResizeVocab(unittest.TestCase):
+    def setUp(self):
+        torch.manual_seed(0)
+        self.vocab_size = 20
+        self.model = GPTModel(
+            self.vocab_size, context_length=16, embedding_dim=8,
+            num_layers=2, num_heads=2, ffn_hidden_dim=32, dropout=0.0,
+        )
+        # give the embeddings real, non-default values to prove they
+        # survive the resize unchanged, not just "still finite"
+        with torch.no_grad():
+            self.original_token_embedding = self.model.embedding.token_embedding.weight.clone()
+            self.original_lm_head = self.model.lm_head.weight.clone()
+
+    def test_new_vocab_size_is_recorded(self):
+        self.model.resize_vocab(self.vocab_size + 3)
+        self.assertEqual(self.model.config["vocab_size"], self.vocab_size + 3)
+        self.assertEqual(self.model.embedding.token_embedding.num_embeddings, self.vocab_size + 3)
+        self.assertEqual(self.model.lm_head.out_features, self.vocab_size + 3)
+
+    def test_existing_rows_are_copied_exactly_unchanged(self):
+        self.model.resize_vocab(self.vocab_size + 3)
+        self.assertTrue(torch.equal(
+            self.model.embedding.token_embedding.weight[: self.vocab_size], self.original_token_embedding,
+        ))
+        self.assertTrue(torch.equal(
+            self.model.lm_head.weight[: self.vocab_size], self.original_lm_head,
+        ))
+
+    def test_new_rows_are_not_just_zeros(self):
+        # a lazy/buggy implementation might zero-init new rows instead of
+        # actually randomly initializing them -- catch that directly.
+        self.model.resize_vocab(self.vocab_size + 3)
+        new_rows = self.model.embedding.token_embedding.weight[self.vocab_size:]
+        self.assertFalse(torch.equal(new_rows, torch.zeros_like(new_rows)))
+
+    def test_forward_pass_works_with_new_token_ids(self):
+        self.model.resize_vocab(self.vocab_size + 3)
+        token_ids = torch.tensor([[self.vocab_size, self.vocab_size + 1, self.vocab_size + 2]])
+        logits = self.model(token_ids)
+        self.assertEqual(logits.shape, (1, 3, self.vocab_size + 3))
+        self.assertTrue(torch.isfinite(logits).all())
+
+    def test_gradients_flow_through_resized_layers(self):
+        self.model.resize_vocab(self.vocab_size + 3)
+        token_ids = torch.randint(0, self.vocab_size + 3, (2, 5))
+        loss = self.model(token_ids).sum()
+        loss.backward()
+        self.assertIsNotNone(self.model.embedding.token_embedding.weight.grad)
+        self.assertIsNotNone(self.model.lm_head.weight.grad)
+
+    def test_no_op_when_size_is_unchanged(self):
+        result = self.model.resize_vocab(self.vocab_size)
+        self.assertIs(result, self.model)
+        self.assertTrue(torch.equal(self.model.embedding.token_embedding.weight, self.original_token_embedding))
+
+    def test_rejects_shrinking_the_vocabulary(self):
+        with self.assertRaises(ValueError):
+            self.model.resize_vocab(self.vocab_size - 1)
+
+
 if __name__ == "__main__":
     unittest.main()
