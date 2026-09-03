@@ -13,8 +13,9 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from ocr.normalize import IMAGE_SIZE, normalize_to_canvas
+
 CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-IMAGE_SIZE = 28  # small-image-classification convention (e.g. MNIST)
 
 FONT_DIR = Path(r"C:\Windows\Fonts")
 FONT_NAMES = ["arial.ttf", "calibri.ttf", "times.ttf", "cour.ttf", "verdana.ttf", "tahoma.ttf"]
@@ -29,21 +30,28 @@ def _available_fonts():
 
 
 def render_character(char, font_path, font_size, rng, jitter_px=2, max_rotation_degrees=8):
-    """One IMAGE_SIZE x IMAGE_SIZE grayscale image of `char`, centered,
-    with small random rotation and position jitter (deterministic given
-    `rng`)."""
+    """One IMAGE_SIZE x IMAGE_SIZE grayscale image of `char`, tightly
+    normalized via ocr.normalize.normalize_to_canvas -- the SAME
+    function real-image segmentation (ocr/segment.py) crops its
+    character regions through, so training data matches what the
+    model actually sees at inference time. Rendered on an oversized
+    canvas first (rotation can push ink outside a tightly-fitted one)
+    with small random rotation and position jitter (deterministic
+    given `rng`) before normalizing."""
     font = ImageFont.truetype(str(font_path), font_size)
-    canvas = Image.new("L", (IMAGE_SIZE, IMAGE_SIZE), color=255)  # white background
+    canvas_size = IMAGE_SIZE * 2  # generous headroom for rotation/jitter before the tight crop
+    canvas = Image.new("L", (canvas_size, canvas_size), color=255)  # white background
     draw = ImageDraw.Draw(canvas)
 
     bbox = draw.textbbox((0, 0), char, font=font)
     char_w, char_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    x = (IMAGE_SIZE - char_w) // 2 - bbox[0] + rng.randint(-jitter_px, jitter_px)
-    y = (IMAGE_SIZE - char_h) // 2 - bbox[1] + rng.randint(-jitter_px, jitter_px)
+    x = (canvas_size - char_w) // 2 - bbox[0] + rng.randint(-jitter_px, jitter_px)
+    y = (canvas_size - char_h) // 2 - bbox[1] + rng.randint(-jitter_px, jitter_px)
     draw.text((x, y), char, font=font, fill=0)  # black ink
 
     angle = rng.uniform(-max_rotation_degrees, max_rotation_degrees)
-    return canvas.rotate(angle, resample=Image.BICUBIC, fillcolor=255)
+    rotated = canvas.rotate(angle, resample=Image.BICUBIC, fillcolor=255)
+    return normalize_to_canvas(rotated)
 
 
 def generate_dataset(samples_per_character=30, seed=1337):
